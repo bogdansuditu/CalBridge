@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, MapPin, Plus } from 'lucide-react';
+import { getPrimaryButtonClass, getPrimaryButtonStyle } from '../utils/theme';
 
 interface CalendarData {
   id: string;
@@ -26,6 +27,7 @@ interface CalendarGridProps {
   visibleCalendarIds: Set<string>;
   onEventClick: (event: EventData) => void;
   onSlotClick: (date: Date) => void;
+  user?: { accentColor?: string | null };
 }
 
 type ViewType = 'month' | 'week' | 'day' | 'agenda';
@@ -35,7 +37,8 @@ export default function CalendarGrid({
   calendars,
   visibleCalendarIds,
   onEventClick,
-  onSlotClick
+  onSlotClick,
+  user
 }: CalendarGridProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState<ViewType>('month');
@@ -544,7 +547,8 @@ export default function CalendarGrid({
 
           <button
             onClick={() => onSlotClick(new Date())}
-            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:bg-indigo-500 cursor-pointer active:scale-98 transition-all ml-2"
+            style={getPrimaryButtonStyle(user?.accentColor)}
+            className={`flex items-center gap-1.5 rounded-xl ${getPrimaryButtonClass(user?.accentColor)} px-3 py-1.5 text-xs font-bold uppercase tracking-wider ml-2`}
           >
             <Plus className="h-4.5 w-4.5" />
             Add Event

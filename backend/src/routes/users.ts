@@ -1,15 +1,12 @@
 import { Router, Response } from 'express';
 import { prisma } from '../db';
 import { hashPassword } from '../utils/auth';
-import { requireAdmin, WebRequest } from '../middlewares/auth';
+import { requireAdmin, requireWebAuth, WebRequest } from '../middlewares/auth';
 
 const router = Router();
 
-// Apply requireAdmin middleware to all endpoints in this file
-router.use(requireAdmin);
-
-// GET /api/users - List all users with statistics
-router.get('/', async (req: WebRequest, res: Response) => {
+// GET /api/users - List all users with statistics (Admin only)
+router.get('/', requireAdmin, async (req: WebRequest, res: Response) => {
   try {
     const users = await prisma.user.findMany({
       select: {
@@ -17,6 +14,7 @@ router.get('/', async (req: WebRequest, res: Response) => {
         username: true,
         role: true,
         storageLimit: true,
+        accentColor: true,
         createdAt: true,
         _count: {
           select: { calendars: true }
@@ -31,8 +29,8 @@ router.get('/', async (req: WebRequest, res: Response) => {
   }
 });
 
-// POST /api/users - Create a new user
-router.post('/', async (req: WebRequest, res: Response) => {
+// POST /api/users - Create a new user (Admin only)
+router.post('/', requireAdmin, async (req: WebRequest, res: Response) => {
   const { username, password, role, storageLimit } = req.body;
 
   if (!username || !password) {
@@ -85,10 +83,17 @@ router.post('/', async (req: WebRequest, res: Response) => {
   }
 });
 
-// PUT /api/users/:id - Update user configuration or password reset
-router.put('/:id', async (req: WebRequest, res: Response) => {
+// PUT /api/users/:id - Update user configuration, password reset, or accent color (Admin or Self)
+router.put('/:id', requireWebAuth, async (req: WebRequest, res: Response) => {
   const { id } = req.params;
-  const { username, password, role, storageLimit } = req.body;
+  const isSelf = req.user?.userId === id;
+  const isAdmin = req.user?.role === 'ADMIN';
+
+  if (!isSelf && !isAdmin) {
+    return res.status(403).json({ error: 'Forbidden', message: 'You are not authorized to update this user' });
+  }
+
+  const { username, password, role, storageLimit, accentColor } = req.body;
 
   try {
     const user = await prisma.user.findUnique({
@@ -119,12 +124,19 @@ router.put('/:id', async (req: WebRequest, res: Response) => {
       updateData.passwordHash = hashPassword(password);
     }
 
-    if (role) {
-      updateData.role = role === 'ADMIN' ? 'ADMIN' : 'USER';
+    // Only administrators can change role and storageLimit
+    if (isAdmin) {
+      if (role) {
+        updateData.role = role === 'ADMIN' ? 'ADMIN' : 'USER';
+      }
+      if (storageLimit !== undefined) {
+        updateData.storageLimit = parseInt(storageLimit, 10) || 0;
+      }
     }
 
-    if (storageLimit !== undefined) {
-      updateData.storageLimit = parseInt(storageLimit, 10) || 0;
+    // Standard or admin users can update their accentColor
+    if (accentColor !== undefined) {
+      updateData.accentColor = accentColor; // Can be null to clear
     }
 
     const updated = await prisma.user.update({
@@ -134,19 +146,20 @@ router.put('/:id', async (req: WebRequest, res: Response) => {
         id: true,
         username: true,
         role: true,
-        storageLimit: true
+        storageLimit: true,
+        accentColor: true
       }
     });
 
     res.json({ message: 'User updated successfully', user: updated });
   } catch (error) {
-    console.error('[Users Admin Route] Update error:', error);
+    console.error('[Users Route] Update error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-// DELETE /api/users/:id - Delete user
-router.delete('/:id', async (req: WebRequest, res: Response) => {
+// DELETE /api/users/:id - Delete user (Admin only)
+router.delete('/:id', requireAdmin, async (req: WebRequest, res: Response) => {
   const { id } = req.params;
 
   if (req.user?.userId === id) {

@@ -11,8 +11,13 @@ import {
   X, 
   Edit, 
   Trash, 
-  RefreshCw 
+  RefreshCw,
+  Settings,
+  Sun,
+  Moon,
+  Monitor
 } from 'lucide-react';
+import { getPrimaryButtonClass, getPrimaryButtonStyle } from '../utils/theme';
 
 interface CalendarData {
   id: string;
@@ -24,13 +29,16 @@ interface CalendarData {
 }
 
 interface LayoutProps {
-  user: { id: string; username: string; role: string };
+  user: { id: string; username: string; role: string; accentColor?: string | null };
   calendars: CalendarData[];
   visibleCalendarIds: Set<string>;
   onToggleCalendar: (id: string) => void;
   onRefreshCalendars: () => void;
   activeTab: 'calendar' | 'admin';
   onChangeTab: (tab: 'calendar' | 'admin') => void;
+  onOpenSettings: () => void;
+  themeMode: 'light' | 'dark' | 'system';
+  onToggleTheme: () => void;
   children: React.ReactNode;
 }
 
@@ -51,6 +59,9 @@ export default function Layout({
   onRefreshCalendars,
   activeTab,
   onChangeTab,
+  onOpenSettings,
+  themeMode,
+  onToggleTheme,
   children
 }: LayoutProps) {
   // Calendar creation/edit states
@@ -258,9 +269,10 @@ export default function Layout({
         <nav className="p-3 border-b border-zinc-200/50 dark:border-zinc-800/40 space-y-1">
           <button
             onClick={() => onChangeTab('calendar')}
+            style={activeTab === 'calendar' ? getPrimaryButtonStyle(user.accentColor) : {}}
             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
               activeTab === 'calendar'
-                ? 'bg-indigo-600 text-white shadow-xs'
+                ? getPrimaryButtonClass(user.accentColor)
                 : 'text-zinc-500 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40'
             }`}
           >
@@ -271,9 +283,10 @@ export default function Layout({
           {user.role === 'ADMIN' && (
             <button
               onClick={() => onChangeTab('admin')}
+              style={activeTab === 'admin' ? getPrimaryButtonStyle(user.accentColor) : {}}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
                 activeTab === 'admin'
-                  ? 'bg-indigo-600 text-white shadow-xs'
+                  ? getPrimaryButtonClass(user.accentColor)
                   : 'text-zinc-500 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40'
               }`}
             >
@@ -383,10 +396,35 @@ export default function Layout({
             </div>
           </div>
         ) : (
-          <div className="p-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider select-none">
+          <div className="p-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider select-none flex-1">
             Admin settings active. Click Calendar Client above to return.
           </div>
         )}
+
+        {/* Sidebar Footer Buttons */}
+        <div className="p-3 border-t border-zinc-200/50 dark:border-zinc-800/40 bg-zinc-50/10 dark:bg-zinc-900/10 flex items-center justify-between gap-2">
+          <button
+            onClick={onOpenSettings}
+            title="Account Settings"
+            className="flex-1 flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer"
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+          
+          <button
+            onClick={onToggleTheme}
+            title={`Theme: ${themeMode}`}
+            className="flex-1 flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer"
+          >
+            {themeMode === 'light' ? (
+              <Sun className="h-5 w-5 text-amber-500" />
+            ) : themeMode === 'dark' ? (
+              <Moon className="h-5 w-5 text-indigo-400" />
+            ) : (
+              <Monitor className="h-5 w-5 text-teal-500" />
+            )}
+          </button>
+        </div>
       </aside>
 
       {/* Main workspace frame */}
@@ -554,7 +592,8 @@ export default function Layout({
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 cursor-pointer disabled:opacity-50"
+                  style={getPrimaryButtonStyle(user.accentColor)}
+                  className={`rounded-xl ${getPrimaryButtonClass(user.accentColor)} px-4 py-2 text-sm font-semibold disabled:opacity-50`}
                 >
                   {submitting ? 'Saving...' : editingCalendar ? 'Save Changes' : 'Create Calendar'}
                 </button>

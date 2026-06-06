@@ -13,6 +13,7 @@ model User {
   passwordHash String
   role         String     @default("USER") // "ADMIN" or "USER"
   storageLimit Int        @default(0)      // 0 means unlimited
+  accentColor  String?                     // User's custom accent color (null/undefined means default gradient)
   calendars    Calendar[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt

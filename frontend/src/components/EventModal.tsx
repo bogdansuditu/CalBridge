@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiCall } from '../api';
 import { X, Calendar, Clock, MapPin, AlignLeft, RefreshCw, Trash2 } from 'lucide-react';
+import { getPrimaryButtonClass, getPrimaryButtonStyle } from '../utils/theme';
 
 interface CalendarData {
   id: string;
@@ -28,9 +29,10 @@ interface EventModalProps {
   event: EventData | null; // Null means create mode
   calendars: CalendarData[];
   selectedDate?: Date; // Pre-filled date when clicking on a grid slot
+  user?: { accentColor?: string | null };
 }
 
-export default function EventModal({ isOpen, onClose, onSave, event, calendars, selectedDate }: EventModalProps) {
+export default function EventModal({ isOpen, onClose, onSave, event, calendars, selectedDate, user }: EventModalProps) {
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
@@ -459,7 +461,8 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
               <button
                 type="submit"
                 disabled={loading}
-                className="rounded-xl bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 cursor-pointer disabled:opacity-50"
+                style={getPrimaryButtonStyle(user?.accentColor)}
+                className={`rounded-xl ${getPrimaryButtonClass(user?.accentColor)} px-5 py-2 text-sm font-semibold disabled:opacity-50`}
               >
                 {loading ? 'Saving...' : 'Save'}
               </button>

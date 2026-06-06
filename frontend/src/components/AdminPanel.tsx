@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { apiCall } from '../api';
-import { UserPlus, Trash2, Users, Settings, X, Shield, User } from 'lucide-react';
+import { UserPlus, Trash2, Users, Settings, X, Shield, User, Check } from 'lucide-react';
+import { getPrimaryButtonClass, getPrimaryButtonStyle } from '../utils/theme';
 
 interface UserData {
   id: string;
   username: string;
   role: string;
   storageLimit: number;
+  accentColor?: string | null;
   createdAt: string;
   _count?: {
     calendars: number;
@@ -14,8 +16,17 @@ interface UserData {
 }
 
 interface AdminPanelProps {
-  currentUser: { id: string; username: string; role: string };
+  currentUser: { id: string; username: string; role: string; accentColor?: string | null };
 }
+
+const PRESET_COLORS = [
+  '#3b82f6', // blue
+  '#10b981', // emerald
+  '#8b5cf6', // purple
+  '#f43f5e', // rose
+  '#f59e0b', // amber
+  '#06b6d4', // cyan
+];
 
 export default function AdminPanel({ currentUser }: AdminPanelProps) {
   const [users, setUsers] = useState<UserData[]>([]);
@@ -29,6 +40,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('USER');
   const [storageLimit, setStorageLimit] = useState(0);
+  const [accentColor, setAccentColor] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -52,6 +64,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
     setPassword('');
     setRole('USER');
     setStorageLimit(0);
+    setAccentColor(null);
     setIsFormOpen(true);
   };
 
@@ -61,6 +74,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
     setPassword(''); // Leave blank if no change
     setRole(user.role);
     setStorageLimit(user.storageLimit);
+    setAccentColor(user.accentColor || null);
     setIsFormOpen(true);
   };
 
@@ -68,7 +82,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
     e.preventDefault();
     setError(null);
 
-    const payload: any = { username, role, storageLimit };
+    const payload: any = { username, role, storageLimit, accentColor };
     if (password || !editingUser) {
       payload.password = password;
     }
@@ -127,7 +141,8 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
 
         <button
           onClick={handleOpenCreate}
-          className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 cursor-pointer active:scale-98 transition-all"
+          style={getPrimaryButtonStyle(currentUser.accentColor)}
+          className={`flex items-center gap-2 rounded-xl ${getPrimaryButtonClass(currentUser.accentColor)} px-4 py-2.5 text-sm font-semibold shadow-xs`}
         >
           <UserPlus className="h-4 w-4" />
           Add User Account
@@ -304,6 +319,48 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                 </div>
               </div>
 
+              {/* Accent Color Picker */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                  Accent Color
+                </label>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {PRESET_COLORS.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setAccentColor(c)}
+                      style={{ backgroundColor: c }}
+                      className={`h-7 w-7 rounded-full border border-black/10 dark:border-white/10 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95 transition-transform ${
+                        accentColor === c ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-zinc-950' : ''
+                      }`}
+                    >
+                      {accentColor === c && <Check className="h-4 w-4 text-white drop-shadow-sm" />}
+                    </button>
+                  ))}
+                  
+                  {/* Custom hex color input */}
+                  <input
+                    type="color"
+                    value={accentColor && accentColor.startsWith('#') ? accentColor : '#6366f1'}
+                    onChange={(e) => setAccentColor(e.target.value)}
+                    className="h-8 w-8 cursor-pointer rounded-full border border-zinc-200 dark:border-zinc-800 bg-transparent p-0 overflow-hidden"
+                  />
+
+                  {/* Default gradient button */}
+                  <button
+                    type="button"
+                    onClick={() => setAccentColor(null)}
+                    className={`h-7 w-7 rounded-full bg-linear-to-tr from-indigo-500 to-pink-500 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95 transition-transform ${
+                      !accentColor ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-zinc-950' : ''
+                    }`}
+                    title="Default Gradient"
+                  >
+                    {!accentColor && <Check className="h-4 w-4 text-white drop-shadow-sm" />}
+                  </button>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800/40">
                 <button
                   type="button"
@@ -314,7 +371,8 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 cursor-pointer"
+                  style={getPrimaryButtonStyle(currentUser.accentColor)}
+                  className={`rounded-xl ${getPrimaryButtonClass(currentUser.accentColor)} px-4 py-2 text-sm font-semibold`}
                 >
                   {editingUser ? 'Save Changes' : 'Create Account'}
                 </button>

@@ -61,7 +61,8 @@ router.post('/setup', async (req, res) => {
       user: {
         id: adminUser.id,
         username: adminUser.username,
-        role: adminUser.role
+        role: adminUser.role,
+        accentColor: adminUser.accentColor
       }
     });
   } catch (error) {
@@ -98,7 +99,8 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        accentColor: user.accentColor
       }
     });
   } catch (error) {
@@ -108,8 +110,26 @@ router.post('/login', async (req, res) => {
 });
 
 // GET /api/auth/me - Get current logged-in user
-router.get('/me', requireWebAuth, (req: WebRequest, res: Response) => {
-  res.json({ user: req.user });
+router.get('/me', requireWebAuth, async (req: WebRequest, res: Response) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        storageLimit: true,
+        accentColor: true
+      }
+    });
+    if (!user) {
+      return res.status(404).json({ error: 'Not Found', message: 'User not found' });
+    }
+    res.json({ user });
+  } catch (error) {
+    console.error('[Auth Route] Get me error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 export default router;
