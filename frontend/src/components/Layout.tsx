@@ -17,7 +17,8 @@ import {
   Moon,
   Monitor,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Menu
 } from 'lucide-react';
 import { getPrimaryButtonClass, getPrimaryButtonStyle } from '../utils/theme';
 
@@ -68,6 +69,7 @@ export default function Layout({
 }: LayoutProps) {
   // Sidebar state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Calendar creation/edit states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -234,10 +236,23 @@ export default function Layout({
   };
 
   return (
-    <div className="flex h-screen w-screen bg-linear-to-br from-slate-100 via-zinc-100 to-indigo-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-slate-950 text-zinc-800 dark:text-zinc-200 overflow-hidden font-sans">
+    <div className="flex h-screen w-screen bg-linear-to-br from-slate-100 via-zinc-100 to-indigo-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-slate-950 text-zinc-800 dark:text-zinc-200 overflow-hidden font-sans relative">
       
+      {/* Mobile Menu Backdrop */}
+      {isMobileMenuOpen && (
+        <div 
+          onClick={() => setIsMobileMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs md:hidden"
+        />
+      )}
+
       {/* Sidebar navigation */}
-      <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-72'} shrink-0 border-r border-zinc-200/80 bg-white/40 dark:border-zinc-800/50 dark:bg-zinc-950/20 backdrop-blur-xl flex flex-col h-full select-none transition-all duration-300`}>
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 flex flex-col h-full select-none bg-white/95 dark:bg-zinc-950/95 backdrop-blur-xl border-r border-zinc-200/80 dark:border-zinc-800/50 transition-all duration-300
+        md:relative md:inset-auto md:z-auto md:bg-white/40 md:dark:bg-zinc-950/20 shrink-0
+        ${isSidebarCollapsed ? 'md:w-16' : 'md:w-72'}
+        ${isMobileMenuOpen ? 'w-72 translate-x-0' : 'w-72 -translate-x-full md:translate-x-0'}
+      `}>
         
         {/* Logo Profile Header */}
         <div className={`p-4 border-b border-zinc-200/50 dark:border-zinc-800/40 flex ${isSidebarCollapsed ? 'flex-col gap-4 items-center' : 'items-center justify-between'}`}>
@@ -250,13 +265,22 @@ export default function Layout({
             )}
           </div>
           
-          <button 
-            onClick={handleLogout}
-            title="Log Out"
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-500 hover:bg-rose-500/5 dark:hover:bg-rose-950/20 cursor-pointer transition-colors"
-          >
-            <LogOut className="h-4.5 w-4.5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={handleLogout}
+              title="Log Out"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-500 hover:bg-rose-500/5 dark:hover:bg-rose-950/20 cursor-pointer transition-colors"
+            >
+              <LogOut className="h-4.5 w-4.5" />
+            </button>
+            <button
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="md:hidden p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+              title="Close Menu"
+            >
+              <X className="h-4.5 w-4.5" />
+            </button>
+          </div>
         </div>
 
         {/* User Badge Info */}
@@ -461,9 +485,27 @@ export default function Layout({
       </aside>
 
       {/* Main workspace frame */}
-      <main className="flex-1 h-full overflow-hidden p-4">
-        <div className="h-full w-full rounded-3xl border border-zinc-200/80 bg-white/70 shadow-2xl dark:border-zinc-800/80 dark:bg-zinc-900/30 backdrop-blur-xl overflow-hidden">
-          {children}
+      <main className="flex-1 h-full overflow-hidden p-2 md:p-4 flex flex-col">
+        <div className="h-full w-full rounded-3xl border border-zinc-200/80 bg-white/70 shadow-2xl dark:border-zinc-800/80 dark:bg-zinc-900/30 backdrop-blur-xl overflow-hidden flex flex-col">
+          
+          {/* Mobile Header Bar */}
+          <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-zinc-200/50 dark:border-zinc-800/40 bg-white/50 dark:bg-zinc-950/20 select-none">
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 cursor-pointer"
+              title="Open Menu"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+            <span className="font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50 text-base">CalBridge</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/15 text-indigo-500 text-xs font-bold uppercase select-none">
+              {user.username.substring(0, 2)}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-hidden h-full">
+            {children}
+          </div>
         </div>
       </main>
 

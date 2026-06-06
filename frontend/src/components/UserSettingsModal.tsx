@@ -81,8 +81,8 @@ export default function UserSettingsModal({ isOpen, onClose, user, onUpdateUser 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-      <div className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white p-6 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950 animate-slide-up">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 sm:items-center">
+      <div className="w-full max-w-md bg-white p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 rounded-t-3xl rounded-b-none sm:rounded-3xl animate-slide-up max-h-[90vh] overflow-y-auto custom-scrollbar">
         
         {/* Header */}
         <div className="flex items-center justify-between mb-4">

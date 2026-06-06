@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, MapPin, Plus } from 'lucide-react';
 import { getPrimaryButtonClass, getPrimaryButtonStyle } from '../utils/theme';
 
@@ -50,6 +50,17 @@ export default function CalendarGrid({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState<ViewType>('month');
 
+  // Viewport detection for responsiveness
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Filter events based on active calendars in sidebar
   const activeEvents = events.filter(e => visibleCalendarIds.has(e.calendarId));
 
@@ -63,7 +74,7 @@ export default function CalendarGrid({
     } else if (currentView === 'month' || currentView === 'agenda') {
       nextDate.setMonth(nextDate.getMonth() + 1);
     } else if (currentView === 'week') {
-      nextDate.setDate(nextDate.getDate() + 7);
+      nextDate.setDate(nextDate.getDate() + (isMobile ? 3 : 7));
     } else if (currentView === 'day') {
       nextDate.setDate(nextDate.getDate() + 1);
     }
@@ -77,7 +88,7 @@ export default function CalendarGrid({
     } else if (currentView === 'month' || currentView === 'agenda') {
       prevDate.setMonth(prevDate.getMonth() - 1);
     } else if (currentView === 'week') {
-      prevDate.setDate(prevDate.getDate() - 7);
+      prevDate.setDate(prevDate.getDate() - (isMobile ? 3 : 7));
     } else if (currentView === 'day') {
       prevDate.setDate(prevDate.getDate() - 1);
     }
@@ -324,8 +335,17 @@ export default function CalendarGrid({
     return grid;
   };
 
-  // Week View Days Calculation (Monday to Sunday)
+  // Week View Days Calculation (Monday to Sunday, or 3 days on mobile)
   const getWeekDays = () => {
+    if (isMobile) {
+      const yesterday = new Date(currentDate);
+      yesterday.setDate(currentDate.getDate() - 1);
+      const today = new Date(currentDate);
+      const tomorrow = new Date(currentDate);
+      tomorrow.setDate(currentDate.getDate() + 1);
+      return [yesterday, today, tomorrow];
+    }
+
     const day = currentDate.getDay();
     const adjust = day === 0 ? -6 : 1 - day; // Adjust to Monday
     const startOfWeek = new Date(currentDate);
@@ -372,18 +392,125 @@ export default function CalendarGrid({
     } else if (currentView === 'week') {
       const week = getWeekDays();
       const startStr = week[0].toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      const endStr = week[6].toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const endStr = week[week.length - 1].toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
       return `${startStr} – ${endStr}`;
     } else {
       return currentDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     }
-  };
-
-  // Render Month View
+  };  // Render Month View
   const renderMonthView = () => {
     const days = getMonthDays();
-    const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const weekdayLabels = isMobile
+      ? ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+      : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const todayDate = new Date();
+
+    if (isMobile) {
+      return (
+        <div className="flex flex-col h-full select-none overflow-hidden">
+          {/* Weekday headers */}
+          <div className="grid grid-cols-7 border-b border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/40 text-center py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+            {weekdayLabels.map((day, dIdx) => <div key={dIdx}>{day}</div>)}
+          </div>
+
+          {/* Days grid */}
+          <div className="grid grid-cols-7 divide-x divide-y divide-zinc-200/40 dark:divide-zinc-800/20 border-b border-r border-zinc-200/40 dark:border-zinc-800/20 bg-zinc-50/10 dark:bg-zinc-900/10 shrink-0">
+            {days.map(({ date, isCurrentMonth }, idx) => {
+              const dayEvents = getEventsForDay(date);
+              const isToday = isSameDay(date, todayDate);
+              const isSelected = isSameDay(date, currentDate);
+
+              return (
+                <div
+                  key={idx}
+                  onClick={() => setCurrentDate(date)}
+                  className={`flex flex-col items-center justify-center p-1.5 cursor-pointer relative transition-colors ${
+                    isCurrentMonth 
+                      ? 'bg-white dark:bg-zinc-900/30' 
+                      : 'bg-zinc-50/10 text-zinc-350 dark:bg-zinc-950/10 dark:text-zinc-650'
+                  } hover:bg-zinc-50/50 dark:hover:bg-zinc-900/10 ${
+                    isSelected ? 'bg-indigo-50/60 dark:bg-indigo-950/20' : ''
+                  }`}
+                >
+                  <span
+                    className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full ${
+                      isToday
+                        ? 'bg-indigo-600 text-white font-extrabold shadow-sm'
+                        : isSelected
+                        ? 'border border-indigo-500 text-indigo-600 dark:text-indigo-400 font-extrabold'
+                        : isCurrentMonth
+                        ? 'text-zinc-750 dark:text-zinc-300'
+                        : 'text-zinc-350 dark:text-zinc-650'
+                    }`}
+                  >
+                    {date.getDate()}
+                  </span>
+                  
+                  {/* Dots indicator */}
+                  <div className="flex gap-0.5 justify-center mt-1 h-1">
+                    {dayEvents.slice(0, 3).map((event, eIdx) => {
+                      const cal = calendarMap.get(event.calendarId);
+                      const calColor = cal?.color || '#3b82f6';
+                      return (
+                        <span 
+                          key={eIdx}
+                          className="h-1 w-1 rounded-full shrink-0" 
+                          style={{ backgroundColor: calColor }} 
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Day events details below monthly grid */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3 bg-white/40 dark:bg-zinc-950/20">
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+              <span>{currentDate.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</span>
+            </h3>
+            
+            <div className="space-y-2">
+              {getEventsForDay(currentDate).length === 0 ? (
+                <div className="text-center py-8 text-zinc-400 dark:text-zinc-600">
+                  <p className="text-xs italic">No events scheduled for this day</p>
+                </div>
+              ) : (
+                getEventsForDay(currentDate).map(event => {
+                  const cal = calendarMap.get(event.calendarId);
+                  const calColor = cal?.color || '#3b82f6';
+                  const start = new Date(event.dtStart);
+                  const end = new Date(event.dtEnd);
+
+                  return (
+                    <div
+                      key={`${event.id}-${event.dtStart}`}
+                      onClick={() => onEventClick(event)}
+                      style={{ borderLeftColor: calColor }}
+                      className="flex flex-col p-3 rounded-2xl border border-zinc-100 dark:border-zinc-800/40 bg-white dark:bg-zinc-900/30 border-l-4 shadow-2xs hover:shadow-xs cursor-pointer transition-all"
+                    >
+                      <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">{event.summary}</span>
+                      <div className="flex items-center gap-3 mt-1.5 text-[10px] text-zinc-400 dark:text-zinc-500 font-semibold">
+                        <span className="flex items-center gap-0.5">
+                          <Clock className="h-3.5 w-3.5" />
+                          {event.isAllDay ? 'All-day' : `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                        </span>
+                        {event.location && (
+                          <span className="flex items-center gap-0.5">
+                            <MapPin className="h-3.5 w-3.5" /> {event.location}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="flex flex-col h-full select-none">
@@ -408,7 +535,7 @@ export default function CalendarGrid({
                 className={`flex flex-col p-1.5 h-full relative cursor-pointer min-h-[90px] overflow-hidden transition-colors ${
                   isCurrentMonth 
                     ? 'bg-white dark:bg-zinc-900/30' 
-                    : 'bg-zinc-50/20 text-zinc-400 dark:bg-zinc-950/10 dark:text-zinc-600'
+                    : 'bg-zinc-50/20 text-zinc-400 dark:bg-zinc-950/10 dark:text-zinc-650'
                 } hover:bg-zinc-50/50 dark:hover:bg-zinc-900/10`}
               >
                 {/* Date Label */}
@@ -420,7 +547,7 @@ export default function CalendarGrid({
                     }}
                     className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800 ${
                       isToday
-                        ? 'bg-indigo-600 text-white font-extrabold'
+                        ? 'bg-indigo-650 text-white font-extrabold'
                         : isSelected
                         ? 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200'
                         : 'text-zinc-600 dark:text-zinc-400'
@@ -729,61 +856,67 @@ export default function CalendarGrid({
     );
   };
 
+
+
   return (
-    <div className="flex flex-col h-full bg-zinc-50/30 dark:bg-zinc-950/5 overflow-hidden">
+    <div className="flex flex-col h-full bg-zinc-50/30 dark:bg-zinc-950/5 overflow-hidden relative">
       
       {/* Calendar Grid Toolbar Header */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/50 dark:bg-zinc-900/20 backdrop-blur-md select-none">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 p-3 border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/50 dark:bg-zinc-900/20 backdrop-blur-md select-none shrink-0">
         
         {/* Navigation title / arrows */}
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100 min-w-[150px]">
-            {getHeaderTitle()}
-          </h2>
-          <div className="flex items-center rounded-xl border border-zinc-200/80 bg-white dark:border-zinc-800/50 dark:bg-zinc-900/30 overflow-hidden shadow-xs">
-            <button
-              onClick={prev}
-              className="p-1.5 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              onClick={today}
-              className="px-3.5 py-1 text-xs font-semibold text-zinc-600 hover:bg-zinc-50 border-x border-zinc-100 dark:border-zinc-800/50 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer"
-            >
-              Today
-            </button>
-            <button
-              onClick={next}
-              className="p-1.5 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+        <div className="flex items-center justify-between w-full sm:w-auto gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-sm md:text-lg font-bold text-zinc-800 dark:text-zinc-100 min-w-[90px] sm:min-w-[150px] truncate max-w-[120px] sm:max-w-none">
+              {getHeaderTitle()}
+            </h2>
+            <div className="flex items-center rounded-xl border border-zinc-200/80 bg-white dark:border-zinc-800/50 dark:bg-zinc-900/30 overflow-hidden shadow-xs">
+              <button
+                onClick={prev}
+                className="p-1 md:p-1.5 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                <ChevronLeft className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              </button>
+              <button
+                onClick={today}
+                className="px-2 py-1 md:px-3.5 md:py-1 text-[10px] md:text-xs font-semibold text-zinc-600 hover:bg-zinc-50 border-x border-zinc-100 dark:border-zinc-800/50 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                Today
+              </button>
+              <button
+                onClick={next}
+                className="p-1 md:p-1.5 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                <ChevronRight className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              </button>
+            </div>
           </div>
 
-          <button
-            onClick={() => onSlotClick(new Date())}
-            style={getPrimaryButtonStyle(user?.accentColor)}
-            className={`flex items-center gap-1.5 rounded-xl ${getPrimaryButtonClass(user?.accentColor)} px-3 py-1.5 text-xs font-bold uppercase tracking-wider ml-2`}
-          >
-            <Plus className="h-4.5 w-4.5" />
-            Add Event
-          </button>
+          {!isMobile && (
+            <button
+              onClick={() => onSlotClick(new Date())}
+              style={getPrimaryButtonStyle(user?.accentColor)}
+              className={`flex items-center gap-1.5 rounded-xl ${getPrimaryButtonClass(user?.accentColor)} px-3 py-1.5 text-xs font-bold uppercase tracking-wider ml-2`}
+            >
+              <Plus className="h-4.5 w-4.5" />
+              Add Event
+            </button>
+          )}
         </div>
 
         {/* View Switches */}
-        <div className="flex items-center p-1 rounded-xl bg-zinc-100 dark:bg-zinc-900/80 border border-zinc-200/50 dark:border-zinc-800/50">
+        <div className="flex items-center p-0.5 md:p-1 rounded-xl bg-zinc-100 dark:bg-zinc-900/80 border border-zinc-200/50 dark:border-zinc-800/50 shrink-0">
           {(['year', 'month', 'week', 'day', 'agenda'] as const).map((view) => (
             <button
               key={view}
               onClick={() => setCurrentView(view)}
-              className={`rounded-lg px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+              className={`rounded-lg px-2.5 py-1.5 md:px-4 md:py-1.5 text-[10px] md:text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
                 currentView === view
                   ? 'bg-white text-zinc-800 shadow-xs dark:bg-zinc-800 dark:text-zinc-100'
                   : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
               }`}
             >
-              {view}
+              {isMobile ? view[0] : view}
             </button>
           ))}
         </div>
@@ -797,6 +930,18 @@ export default function CalendarGrid({
         {currentView === 'day' && renderDayView()}
         {currentView === 'agenda' && renderAgendaView()}
       </div>
+
+      {/* Mobile Floating Action Button (FAB) */}
+      {isMobile && (
+        <button
+          onClick={() => onSlotClick(currentDate)}
+          style={getPrimaryButtonStyle(user?.accentColor)}
+          className={`fixed bottom-6 right-6 z-30 h-14 w-14 rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer ${getPrimaryButtonClass(user?.accentColor)}`}
+          title="Add Event"
+        >
+          <Plus className="h-6 w-6 text-white" />
+        </button>
+      )}
 
     </div>
   );
