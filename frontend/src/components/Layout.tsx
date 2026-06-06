@@ -15,7 +15,9 @@ import {
   Settings,
   Sun,
   Moon,
-  Monitor
+  Monitor,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { getPrimaryButtonClass, getPrimaryButtonStyle } from '../utils/theme';
 
@@ -64,6 +66,9 @@ export default function Layout({
   onToggleTheme,
   children
 }: LayoutProps) {
+  // Sidebar state
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
   // Calendar creation/edit states
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCalendar, setEditingCalendar] = useState<CalendarData | null>(null);
@@ -232,15 +237,17 @@ export default function Layout({
     <div className="flex h-screen w-screen bg-linear-to-br from-slate-100 via-zinc-100 to-indigo-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-slate-950 text-zinc-800 dark:text-zinc-200 overflow-hidden font-sans">
       
       {/* Sidebar navigation */}
-      <aside className="w-72 shrink-0 border-r border-zinc-200/80 bg-white/40 dark:border-zinc-800/50 dark:bg-zinc-950/20 backdrop-blur-xl flex flex-col h-full select-none">
+      <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-72'} shrink-0 border-r border-zinc-200/80 bg-white/40 dark:border-zinc-800/50 dark:bg-zinc-950/20 backdrop-blur-xl flex flex-col h-full select-none transition-all duration-300`}>
         
         {/* Logo Profile Header */}
-        <div className="p-5 border-b border-zinc-200/50 dark:border-zinc-800/40 flex items-center justify-between">
+        <div className={`p-4 border-b border-zinc-200/50 dark:border-zinc-800/40 flex ${isSidebarCollapsed ? 'flex-col gap-4 items-center' : 'items-center justify-between'}`}>
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-linear-to-tr from-indigo-500 to-pink-500 text-white">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-tr from-indigo-500 to-pink-500 text-white">
               <Calendar className="h-4.5 w-4.5" />
             </div>
-            <span className="font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50">CalBridge</span>
+            {!isSidebarCollapsed && (
+              <span className="font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50">CalBridge</span>
+            )}
           </div>
           
           <button 
@@ -253,160 +260,174 @@ export default function Layout({
         </div>
 
         {/* User Badge Info */}
-        <div className="px-5 py-4 border-b border-zinc-200/50 dark:border-zinc-800/40 bg-zinc-50/20 dark:bg-zinc-900/10">
+        <div className={`px-4 py-3 border-b border-zinc-200/50 dark:border-zinc-800/40 bg-zinc-50/20 dark:bg-zinc-900/10 flex ${isSidebarCollapsed ? 'justify-center' : 'items-center'}`}>
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/15 text-indigo-500 text-xs font-bold uppercase">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500/15 text-indigo-500 text-xs font-bold uppercase" title={`${user.username} (${user.role})`}>
               {user.username.substring(0, 2)}
             </div>
-            <div className="truncate flex-1">
-              <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-sm block leading-none">{user.username}</span>
-              <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mt-0.5">{user.role}</span>
-            </div>
+            {!isSidebarCollapsed && (
+              <div className="truncate flex-1">
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-sm block leading-none">{user.username}</span>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mt-0.5">{user.role}</span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Tab Selectors (Calendar Client vs Admin Dashboard) */}
-        <nav className="p-3 border-b border-zinc-200/50 dark:border-zinc-800/40 space-y-1">
+        <nav className={`p-2 border-b border-zinc-200/50 dark:border-zinc-800/40 space-y-2 flex flex-col items-center`}>
           <button
             onClick={() => onChangeTab('calendar')}
             style={activeTab === 'calendar' ? getPrimaryButtonStyle(user.accentColor) : {}}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+            title="Calendar Client"
+            className={`flex items-center justify-center rounded-xl text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+              isSidebarCollapsed 
+                ? 'h-10 w-10 p-0' 
+                : 'w-full gap-2.5 px-3 py-2'
+            } ${
               activeTab === 'calendar'
                 ? getPrimaryButtonClass(user.accentColor)
                 : 'text-zinc-500 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40'
             }`}
           >
-            <Calendar className="h-4.5 w-4.5" />
-            Calendar Client
+            <Calendar className="h-4.5 w-4.5 shrink-0" />
+            {!isSidebarCollapsed && <span>Calendar Client</span>}
           </button>
 
           {user.role === 'ADMIN' && (
             <button
               onClick={() => onChangeTab('admin')}
               style={activeTab === 'admin' ? getPrimaryButtonStyle(user.accentColor) : {}}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+              title="Users Dashboard"
+              className={`flex items-center justify-center rounded-xl text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                isSidebarCollapsed 
+                  ? 'h-10 w-10 p-0' 
+                  : 'w-full gap-2.5 px-3 py-2'
+              } ${
                 activeTab === 'admin'
                   ? getPrimaryButtonClass(user.accentColor)
                   : 'text-zinc-500 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40'
               }`}
             >
-              <Users className="h-4.5 w-4.5" />
-              Users Dashboard
+              <Users className="h-4.5 w-4.5 shrink-0" />
+              {!isSidebarCollapsed && <span>Users Dashboard</span>}
             </button>
           )}
         </nav>
 
         {/* Calendar Lists (Only active in Calendar View) */}
-        {activeTab === 'calendar' ? (
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-6">
-            
-            {/* Header / Add Button */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10.5px] font-bold uppercase tracking-wider text-zinc-400">My Calendars</span>
-                <button
-                  onClick={handleOpenCreate}
-                  title="Create Calendar"
-                  className="p-1 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 hover:text-zinc-600 cursor-pointer"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
+        {!isSidebarCollapsed && (
+          activeTab === 'calendar' ? (
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-6">
+              
+              {/* Header / Add Button */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-zinc-400">My Calendars</span>
+                  <button
+                    onClick={handleOpenCreate}
+                    title="Create Calendar"
+                    className="p-1 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 hover:text-zinc-600 cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
 
-              {/* Calendars checklist */}
-              <div className="space-y-1">
-                {calendars.map((cal) => {
-                  const isChecked = visibleCalendarIds.has(cal.id);
-                  return (
-                    <div 
-                      key={cal.id}
-                      className="group flex items-center justify-between rounded-xl px-2 py-1.5 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/30 transition-colors"
-                    >
-                      <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0 pr-2">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => onToggleCalendar(cal.id)}
-                          className="rounded-sm border-zinc-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
-                        />
-                        {/* Custom Color Dot */}
-                        <div 
-                          className="h-3 w-3 shrink-0 rounded-full border border-black/10 dark:border-white/10" 
-                          style={{ backgroundColor: cal.color }}
-                        />
-                        <span className="text-sm font-semibold truncate text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
-                          {cal.name}
-                          {cal.isReadOnly && <span title="Remote ICS subscription"><Globe className="h-3 w-3 text-zinc-400" /></span>}
-                        </span>
-                      </label>
+                {/* Calendars checklist */}
+                <div className="space-y-1">
+                  {calendars.map((cal) => {
+                    const isChecked = visibleCalendarIds.has(cal.id);
+                    return (
+                      <div 
+                        key={cal.id}
+                        className="group flex items-center justify-between rounded-xl px-2 py-1.5 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/30 transition-colors"
+                      >
+                        <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0 pr-2">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => onToggleCalendar(cal.id)}
+                            className="rounded-sm border-zinc-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                          />
+                          {/* Custom Color Dot */}
+                          <div 
+                            className="h-3 w-3 shrink-0 rounded-full border border-black/10 dark:border-white/10" 
+                            style={{ backgroundColor: cal.color }}
+                          />
+                          <span className="text-sm font-semibold truncate text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
+                            {cal.name}
+                            {cal.isReadOnly && <span title="Remote ICS subscription"><Globe className="h-3 w-3 text-zinc-400" /></span>}
+                          </span>
+                        </label>
 
-                      {/* Hover Actions Menu */}
-                      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1.5 shrink-0">
-                        {cal.isReadOnly ? (
-                          <button
-                            onClick={() => handleSyncRemote(cal)}
-                            disabled={syncingId === cal.id}
-                            title="Sync Remote Feed"
-                            className="p-1 text-zinc-400 hover:text-indigo-500 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer disabled:opacity-50"
-                          >
-                            <RefreshCw className={`h-3 w-3 ${syncingId === cal.id ? 'animate-spin' : ''}`} />
-                          </button>
-                        ) : (
-                          <div className="relative flex items-center">
-                            <label 
-                              htmlFor={`import-file-${cal.id}`}
-                              className="p-1 text-zinc-400 hover:text-indigo-500 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer block"
-                              title="Import Local .ics File"
+                        {/* Hover Actions Menu */}
+                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1.5 shrink-0">
+                          {cal.isReadOnly ? (
+                            <button
+                              onClick={() => handleSyncRemote(cal)}
+                              disabled={syncingId === cal.id}
+                              title="Sync Remote Feed"
+                              className="p-1 text-zinc-400 hover:text-indigo-500 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer disabled:opacity-50"
                             >
-                              {importingId === cal.id ? (
-                                <RefreshCw className="h-3 w-3 animate-spin text-indigo-500" />
-                              ) : (
-                                <Upload className="h-3 w-3" />
-                              )}
-                            </label>
-                            <input
-                              id={`import-file-${cal.id}`}
-                              type="file"
-                              accept=".ics"
-                              disabled={importingId !== null}
-                              onChange={handleImportIcs(cal.id)}
-                              className="hidden"
-                            />
-                          </div>
-                        )}
-                        <button
-                          onClick={() => handleOpenEdit(cal)}
-                          title="Edit Calendar"
-                          className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer"
-                        >
-                          <Edit className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCalendar(cal.id)}
-                          title="Delete Calendar"
-                          className="p-1 text-zinc-400 hover:text-rose-600 rounded-md hover:bg-rose-50/50 dark:hover:bg-rose-950/20 cursor-pointer"
-                        >
-                          <Trash className="h-3 w-3" />
-                        </button>
+                              <RefreshCw className={`h-3 w-3 ${syncingId === cal.id ? 'animate-spin' : ''}`} />
+                            </button>
+                          ) : (
+                            <div className="relative flex items-center">
+                              <label 
+                                htmlFor={`import-file-${cal.id}`}
+                                className="p-1 text-zinc-400 hover:text-indigo-500 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer block"
+                                title="Import Local .ics File"
+                              >
+                                {importingId === cal.id ? (
+                                  <RefreshCw className="h-3 w-3 animate-spin text-indigo-500" />
+                                ) : (
+                                  <Upload className="h-3 w-3" />
+                                )}
+                              </label>
+                              <input
+                                id={`import-file-${cal.id}`}
+                                type="file"
+                                accept=".ics"
+                                disabled={importingId !== null}
+                                onChange={handleImportIcs(cal.id)}
+                                className="hidden"
+                              />
+                            </div>
+                          )}
+                          <button
+                            onClick={() => handleOpenEdit(cal)}
+                            title="Edit Calendar"
+                            className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCalendar(cal.id)}
+                            title="Delete Calendar"
+                            className="p-1 text-zinc-400 hover:text-rose-600 rounded-md hover:bg-rose-50/50 dark:hover:bg-rose-950/20 cursor-pointer"
+                          >
+                            <Trash className="h-3 w-3" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="p-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider select-none flex-1">
-            Admin settings active. Click Calendar Client above to return.
-          </div>
+          ) : (
+            <div className="p-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider select-none flex-1">
+              Admin settings active. Click Calendar Client above to return.
+            </div>
+          )
         )}
 
         {/* Sidebar Footer Buttons */}
-        <div className="p-3 border-t border-zinc-200/50 dark:border-zinc-800/40 bg-zinc-50/10 dark:bg-zinc-900/10 flex items-center justify-between gap-2">
+        <div className={`p-3 border-t border-zinc-200/50 dark:border-zinc-800/40 bg-zinc-50/10 dark:bg-zinc-900/10 flex ${isSidebarCollapsed ? 'flex-col items-center gap-3' : 'items-center justify-between gap-2'}`}>
           <button
             onClick={onOpenSettings}
             title="Account Settings"
-            className="flex-1 flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer"
+            className={`${isSidebarCollapsed ? 'w-10 h-10' : 'flex-1'} flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer`}
           >
             <Settings className="h-5 w-5" />
           </button>
@@ -414,7 +435,7 @@ export default function Layout({
           <button
             onClick={onToggleTheme}
             title={`Theme: ${themeMode}`}
-            className="flex-1 flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer"
+            className={`${isSidebarCollapsed ? 'w-10 h-10' : 'flex-1'} flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer`}
           >
             {themeMode === 'light' ? (
               <Sun className="h-5 w-5 text-amber-500" />
@@ -422,6 +443,18 @@ export default function Layout({
               <Moon className="h-5 w-5 text-indigo-400" />
             ) : (
               <Monitor className="h-5 w-5 text-teal-500" />
+            )}
+          </button>
+
+          <button
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            className={`${isSidebarCollapsed ? 'w-10 h-10' : 'flex-1'} flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer`}
+          >
+            {isSidebarCollapsed ? (
+              <ChevronRight className="h-5 w-5" />
+            ) : (
+              <ChevronLeft className="h-5 w-5" />
             )}
           </button>
         </div>

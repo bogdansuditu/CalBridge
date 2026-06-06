@@ -553,12 +553,17 @@ export default function CalendarGrid({
                       <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate leading-tight">
                         {event.summary}
                       </span>
-                      {height > 45 && event.location && (
+                      {height > 35 && (
+                        <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium truncate mt-0.5 select-none">
+                          {new Date(event.dtStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(event.dtEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                      {height > 55 && event.location && (
                         <span className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate flex items-center gap-0.5 mt-0.5">
                           <MapPin className="h-3 w-3" /> {event.location}
                         </span>
                       )}
-                      {height > 60 && event.description && (
+                      {height > 75 && event.description && (
                         <p className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate mt-1">
                           {event.description}
                         </p>
