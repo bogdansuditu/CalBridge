@@ -72,5 +72,5 @@ EXPOSE 5000
 RUN mkdir -p /app/data
 VOLUME /app/data
 
-# Run migrations and start production server
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+# Run db push to setup SQLite schema and start production server
+CMD ["sh", "-c", "npx prisma db push && npm start"]
