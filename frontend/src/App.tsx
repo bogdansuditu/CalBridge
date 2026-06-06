@@ -181,6 +181,22 @@ export default function App() {
     loadData();
   };
 
+  const handleEventUpdateTimes = async (eventId: string, newStart: Date, newEnd: Date) => {
+    try {
+      await apiCall(`/api/events/${eventId}`, {
+        method: 'PUT',
+        json: {
+          dtStart: newStart.toISOString(),
+          dtEnd: newEnd.toISOString()
+        }
+      });
+      loadData();
+    } catch (error: any) {
+      console.error('[Dashboard] Event drag update error:', error);
+      alert(error.message || 'Failed to update event times');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-zinc-900 text-zinc-400">
@@ -218,6 +234,7 @@ export default function App() {
           visibleCalendarIds={visibleCalendarIds}
           onEventClick={handleOpenEditModal}
           onSlotClick={handleOpenCreateModal}
+          onEventUpdate={handleEventUpdateTimes}
           user={user}
         />
       ) : (

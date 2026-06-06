@@ -50,7 +50,11 @@ router.get('/', async (req: WebRequest, res: Response) => {
 
     for (const event of events) {
       if (!event.rrule) {
-        expandedEvents.push(event);
+        expandedEvents.push({
+          ...event,
+          originalDtStart: event.dtStart,
+          originalDtEnd: event.dtEnd
+        });
         continue;
       }
 
@@ -69,12 +73,18 @@ router.get('/', async (req: WebRequest, res: Response) => {
           expandedEvents.push({
             ...event,
             dtStart: occStart.toISOString(),
-            dtEnd: occEnd.toISOString()
+            dtEnd: occEnd.toISOString(),
+            originalDtStart: event.dtStart,
+            originalDtEnd: event.dtEnd
           });
         }
       } catch (err) {
         console.error(`[Events Get] Failed to expand recurrence for event ${event.id}:`, err);
-        expandedEvents.push(event);
+        expandedEvents.push({
+          ...event,
+          originalDtStart: event.dtStart,
+          originalDtEnd: event.dtEnd
+        });
       }
     }
 

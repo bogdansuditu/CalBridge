@@ -19,6 +19,8 @@ interface EventData {
   isAllDay: boolean;
   rrule: string | null;
   calendarId: string;
+  originalDtStart?: string;
+  originalDtEnd?: string;
 }
 
 interface CalendarGridProps {
@@ -27,10 +29,14 @@ interface CalendarGridProps {
   visibleCalendarIds: Set<string>;
   onEventClick: (event: EventData) => void;
   onSlotClick: (date: Date) => void;
+  onEventUpdate?: (eventId: string, newStart: Date, newEnd: Date) => void;
   user?: { accentColor?: string | null };
 }
 
-type ViewType = 'month' | 'week' | 'day' | 'agenda';
+type ViewType = 'year' | 'month' | 'week' | 'day' | 'agenda';
+
+const hourRows = Array.from({ length: 24 }, (_, i) => i);
+const hourHeight = 60; // 60px per hour (1px per minute)
 
 export default function CalendarGrid({
   events,
@@ -38,6 +44,7 @@ export default function CalendarGrid({
   visibleCalendarIds,
   onEventClick,
   onSlotClick,
+  onEventUpdate,
   user
 }: CalendarGridProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -51,7 +58,9 @@ export default function CalendarGrid({
   // Date Navigation Helpers
   const next = () => {
     const nextDate = new Date(currentDate);
-    if (currentView === 'month' || currentView === 'agenda') {
+    if (currentView === 'year') {
+      nextDate.setFullYear(nextDate.getFullYear() + 1);
+    } else if (currentView === 'month' || currentView === 'agenda') {
       nextDate.setMonth(nextDate.getMonth() + 1);
     } else if (currentView === 'week') {
       nextDate.setDate(nextDate.getDate() + 7);
@@ -63,7 +72,9 @@ export default function CalendarGrid({
 
   const prev = () => {
     const prevDate = new Date(currentDate);
-    if (currentView === 'month' || currentView === 'agenda') {
+    if (currentView === 'year') {
+      prevDate.setFullYear(prevDate.getFullYear() - 1);
+    } else if (currentView === 'month' || currentView === 'agenda') {
       prevDate.setMonth(prevDate.getMonth() - 1);
     } else if (currentView === 'week') {
       prevDate.setDate(prevDate.getDate() - 7);
@@ -75,6 +86,199 @@ export default function CalendarGrid({
 
   const today = () => {
     setCurrentDate(new Date());
+  };
+
+  // Drag and Drop Handlers
+  const handleDragStart = (e: React.DragEvent, event: EventData) => {
+    const cal = calendars.find(c => c.id === event.calendarId);
+    if (cal?.isReadOnly) {
+      e.preventDefault();
+      return;
+    }
+    // Set drag transfer parameters
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      id: event.id,
+      dtStart: event.dtStart,
+      dtEnd: event.dtEnd,
+      originalDtStart: event.originalDtStart,
+      originalDtEnd: event.originalDtEnd,
+      calendarId: event.calendarId
+    }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDropOnMonthGrid = (e: React.DragEvent, targetDate: Date) => {
+    e.preventDefault();
+    const rawData = e.dataTransfer.getData('text/plain');
+    if (!rawData) return;
+    try {
+      const dragData = JSON.parse(rawData);
+      const { id, dtStart, dtEnd, originalDtStart, originalDtEnd, calendarId } = dragData;
+
+      const cal = calendars.find(c => c.id === calendarId);
+      if (cal?.isReadOnly) return;
+
+      const occurrenceStart = new Date(dtStart);
+      const masterStart = new Date(originalDtStart || dtStart);
+      const masterEnd = new Date(originalDtEnd || dtEnd);
+
+      const newOccurrenceStart = new Date(targetDate);
+      newOccurrenceStart.setHours(occurrenceStart.getHours(), occurrenceStart.getMinutes(), 0, 0);
+
+      const deltaMs = newOccurrenceStart.getTime() - occurrenceStart.getTime();
+      const newMasterStart = new Date(masterStart.getTime() + deltaMs);
+      const newMasterEnd = new Date(masterEnd.getTime() + deltaMs);
+
+      if (onEventUpdate) {
+        onEventUpdate(id, newMasterStart, newMasterEnd);
+      }
+    } catch (err) {
+      console.error('[Month Grid Drop] Failed:', err);
+    }
+  };
+
+  const handleDropOnHourGrid = (e: React.DragEvent, targetDay: Date) => {
+    e.preventDefault();
+    const rawData = e.dataTransfer.getData('text/plain');
+    if (!rawData) return;
+    try {
+      const dragData = JSON.parse(rawData);
+      const { id, dtStart, dtEnd, originalDtStart, originalDtEnd, calendarId } = dragData;
+
+      const cal = calendars.find(c => c.id === calendarId);
+      if (cal?.isReadOnly) return;
+
+      const occurrenceStart = new Date(dtStart);
+      const masterStart = new Date(originalDtStart || dtStart);
+      const masterEnd = new Date(originalDtEnd || dtEnd);
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const dropY = e.clientY - rect.top;
+      const dropHourFloat = dropY / hourHeight;
+      const dropHour = Math.floor(dropHourFloat);
+      const dropMinutes = Math.floor((dropHourFloat - dropHour) * 60);
+
+      // Round minutes to the nearest 15-minute slot
+      const minutesAligned = Math.round(dropMinutes / 15) * 15;
+      const alignedHour = dropHour + Math.floor(minutesAligned / 60);
+      const alignedMinutes = minutesAligned % 60;
+
+      const newOccurrenceStart = new Date(targetDay);
+      newOccurrenceStart.setHours(alignedHour, alignedMinutes, 0, 0);
+
+      const deltaMs = newOccurrenceStart.getTime() - occurrenceStart.getTime();
+      const newMasterStart = new Date(masterStart.getTime() + deltaMs);
+      const newMasterEnd = new Date(masterEnd.getTime() + deltaMs);
+
+      if (onEventUpdate) {
+        onEventUpdate(id, newMasterStart, newMasterEnd);
+      }
+    } catch (err) {
+      console.error('[Hour Grid Drop] Failed:', err);
+    }
+  };
+
+  // Year View Generation Helpers
+  const getYearMonthDays = (year: number, month: number) => {
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const adjustedFirstDayIndex = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    const grid = [];
+    for (let i = adjustedFirstDayIndex - 1; i >= 0; i--) {
+      grid.push({
+        date: new Date(year, month - 1, daysInPrevMonth - i),
+        isCurrentMonth: false
+      });
+    }
+    for (let i = 1; i <= daysInMonth; i++) {
+      grid.push({
+        date: new Date(year, month, i),
+        isCurrentMonth: true
+      });
+    }
+    const remainingSlots = 42 - grid.length;
+    for (let i = 1; i <= remainingSlots; i++) {
+      grid.push({
+        date: new Date(year, month + 1, i),
+        isCurrentMonth: false
+      });
+    }
+    return grid;
+  };
+
+  const renderYearView = () => {
+    const year = currentDate.getFullYear();
+    const months = Array.from({ length: 12 }, (_, i) => i);
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    const todayDate = new Date();
+
+    return (
+      <div className="h-full overflow-y-auto custom-scrollbar p-4 select-none">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {months.map(month => {
+            const days = getYearMonthDays(year, month);
+            return (
+              <div key={month} className="rounded-2xl border border-zinc-200/60 dark:border-zinc-800/40 bg-white/40 dark:bg-zinc-900/10 p-3 flex flex-col backdrop-blur-xs">
+                <h3 className="text-sm font-extrabold text-zinc-850 dark:text-zinc-200 mb-2 truncate">
+                  {monthNames[month]}
+                </h3>
+
+                <div className="grid grid-cols-7 text-center text-[9px] font-bold text-zinc-400 dark:text-zinc-650 mb-1">
+                  {weekdayLabels.map((lbl, idx) => (
+                    <div key={idx}>{lbl}</div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 gap-y-0.5 text-center text-xs">
+                  {days.map(({ date, isCurrentMonth }, idx) => {
+                    const isToday = isSameDay(date, todayDate);
+                    const dayEvents = getEventsForDay(date);
+                    const hasEvents = dayEvents.length > 0;
+
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setCurrentDate(date);
+                          setCurrentView('day');
+                        }}
+                        className={`aspect-square flex flex-col items-center justify-center rounded-full cursor-pointer relative ${
+                          isCurrentMonth
+                            ? 'text-zinc-700 dark:text-zinc-350 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                            : 'text-zinc-300 dark:text-zinc-700 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30'
+                        } ${
+                          isToday
+                            ? 'bg-indigo-650 text-white font-extrabold hover:bg-indigo-500'
+                            : ''
+                        }`}
+                      >
+                        {date.getDate()}
+                        {hasEvents && !isToday && (
+                          <span className="absolute bottom-0.5 h-1 w-1 rounded-full bg-indigo-500 dark:bg-indigo-400" />
+                        )}
+                        {hasEvents && isToday && (
+                          <span className="absolute bottom-0.5 h-1 w-1 rounded-full bg-white" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   // Month View Grid Calculation
@@ -161,7 +365,9 @@ export default function CalendarGrid({
 
   // Format header title
   const getHeaderTitle = () => {
-    if (currentView === 'month' || currentView === 'agenda') {
+    if (currentView === 'year') {
+      return currentDate.getFullYear().toString();
+    } else if (currentView === 'month' || currentView === 'agenda') {
       return currentDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     } else if (currentView === 'week') {
       const week = getWeekDays();
@@ -172,9 +378,6 @@ export default function CalendarGrid({
       return currentDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     }
   };
-
-  const hourRows = Array.from({ length: 24 }, (_, i) => i);
-  const hourHeight = 60; // 60px per hour (1px per minute)
 
   // Render Month View
   const renderMonthView = () => {
@@ -200,6 +403,8 @@ export default function CalendarGrid({
               <div
                 key={idx}
                 onClick={() => onSlotClick(date)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDropOnMonthGrid(e, date)}
                 className={`flex flex-col p-1.5 h-full relative cursor-pointer min-h-[90px] overflow-hidden transition-colors ${
                   isCurrentMonth 
                     ? 'bg-white dark:bg-zinc-900/30' 
@@ -242,6 +447,8 @@ export default function CalendarGrid({
                           e.stopPropagation();
                           onEventClick(event);
                         }}
+                        draggable={!cal?.isReadOnly}
+                        onDragStart={(e) => handleDragStart(e, event)}
                         style={{ borderLeftColor: calColor }}
                         className="text-[10.5px] truncate font-medium border-l-3 rounded-r-sm bg-zinc-100/60 dark:bg-zinc-800/40 px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 hover:scale-[1.01] transition-transform"
                       >
@@ -315,6 +522,8 @@ export default function CalendarGrid({
                   date.setHours(clickHour, 0, 0, 0);
                   onSlotClick(date);
                 }}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDropOnHourGrid(e, day)}
                 className="flex-1 relative cursor-pointer hover:bg-zinc-50/10 dark:hover:bg-zinc-900/5"
                 style={{ height: `${24 * hourHeight}px` }}
               >
@@ -331,6 +540,8 @@ export default function CalendarGrid({
                         e.stopPropagation();
                         onEventClick(event);
                       }}
+                      draggable={!cal?.isReadOnly}
+                      onDragStart={(e) => handleDragStart(e, event)}
                       style={{
                         top: `${top}px`,
                         height: `${height}px`,
@@ -557,7 +768,7 @@ export default function CalendarGrid({
 
         {/* View Switches */}
         <div className="flex items-center p-1 rounded-xl bg-zinc-100 dark:bg-zinc-900/80 border border-zinc-200/50 dark:border-zinc-800/50">
-          {(['month', 'week', 'day', 'agenda'] as const).map((view) => (
+          {(['year', 'month', 'week', 'day', 'agenda'] as const).map((view) => (
             <button
               key={view}
               onClick={() => setCurrentView(view)}
@@ -575,6 +786,7 @@ export default function CalendarGrid({
 
       {/* Main View Container */}
       <div className="flex-1 overflow-hidden h-full">
+        {currentView === 'year' && renderYearView()}
         {currentView === 'month' && renderMonthView()}
         {currentView === 'week' && renderWeekView()}
         {currentView === 'day' && renderDayView()}

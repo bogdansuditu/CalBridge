@@ -47,8 +47,9 @@ app.all('/', (req, res, next) => {
 
 // Redirect standard Apple/iCloud probed paths to the CalDAV principal
 app.all('/calendar/dav/:username*', (req, res) => {
-  console.log(`[Redirect] Probed path matched. Redirecting client to /caldav/users/${req.params.username}/`);
-  res.redirect(307, `/caldav/users/${req.params.username}/`);
+  const username = (req.params as any).username;
+  console.log(`[Redirect] Probed path matched. Redirecting client to /caldav/users/${username}/`);
+  res.redirect(307, `/caldav/users/${username}/`);
 });
 
 app.all('/principals*', (req, res) => {
