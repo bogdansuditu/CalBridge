@@ -106,6 +106,9 @@ export default function CalendarGrid({
       e.preventDefault();
       return;
     }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const grabOffset = e.clientY - rect.top;
+
     // Set drag transfer parameters
     e.dataTransfer.setData('text/plain', JSON.stringify({
       id: event.id,
@@ -113,7 +116,8 @@ export default function CalendarGrid({
       dtEnd: event.dtEnd,
       originalDtStart: event.originalDtStart,
       originalDtEnd: event.originalDtEnd,
-      calendarId: event.calendarId
+      calendarId: event.calendarId,
+      grabOffset: grabOffset
     }));
     e.dataTransfer.effectAllowed = 'move';
   };
@@ -158,7 +162,7 @@ export default function CalendarGrid({
     if (!rawData) return;
     try {
       const dragData = JSON.parse(rawData);
-      const { id, dtStart, dtEnd, originalDtStart, originalDtEnd, calendarId } = dragData;
+      const { id, dtStart, dtEnd, originalDtStart, originalDtEnd, calendarId, grabOffset } = dragData;
 
       const cal = calendars.find(c => c.id === calendarId);
       if (cal?.isReadOnly) return;
@@ -168,7 +172,8 @@ export default function CalendarGrid({
       const masterEnd = new Date(originalDtEnd || dtEnd);
 
       const rect = e.currentTarget.getBoundingClientRect();
-      const dropY = e.clientY - rect.top;
+      const dropOffset = grabOffset || 0;
+      const dropY = Math.max(0, Math.min(24 * hourHeight - 15, e.clientY - rect.top - dropOffset));
       const dropHourFloat = dropY / hourHeight;
       const dropHour = Math.floor(dropHourFloat);
       const dropMinutes = Math.floor((dropHourFloat - dropHour) * 60);
@@ -577,7 +582,7 @@ export default function CalendarGrid({
                         draggable={!cal?.isReadOnly}
                         onDragStart={(e) => handleDragStart(e, event)}
                         style={{ borderLeftColor: calColor }}
-                        className="text-[10.5px] truncate font-medium border-l-3 rounded-r-sm bg-zinc-100/60 dark:bg-zinc-800/40 px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 hover:scale-[1.01] transition-transform"
+                        className="text-[10.5px] truncate font-medium border-l-3 rounded-r-sm bg-zinc-100/60 dark:bg-zinc-800/40 px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 hover:scale-[1.01] transition-transform select-none"
                       >
                         {event.summary}
                       </div>
@@ -675,7 +680,7 @@ export default function CalendarGrid({
                         borderLeftColor: calColor,
                         backgroundColor: `${calColor}15` // opacity hex
                       }}
-                      className="absolute left-1 right-1 rounded-r-lg border-l-4 p-2 shadow-xs hover:shadow-md hover:brightness-95 active:scale-99 transition-all overflow-hidden flex flex-col justify-start text-left cursor-pointer"
+                      className="absolute left-1 right-1 rounded-r-lg border-l-4 p-2 shadow-xs hover:shadow-md hover:brightness-95 active:scale-99 transition-all overflow-hidden flex flex-col justify-start text-left cursor-pointer select-none"
                     >
                       <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate leading-tight">
                         {event.summary}

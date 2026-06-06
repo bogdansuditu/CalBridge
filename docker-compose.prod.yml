@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  calbridge:
+    build:
+      context: .
+      target: production
+    container_name: calbridge-production
+    ports:
+      - "${PORT:-5000}:${PORT:-5000}"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: always
