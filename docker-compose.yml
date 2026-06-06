@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      target: backend-dev
+    container_name: calbridge-backend-dev
+    ports:
+      - "5001:5000"
+    volumes:
+      # Mount source code for hot-reloading
+      - ./backend/src:/app/backend/src
+      - ./backend/prisma:/app/backend/prisma
+      # Mount sqlite database directory to a local data folder
+      - ./data:/app/data
+      # Prevent host node_modules from overwriting container node_modules
+      - /app/backend/node_modules
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=file:/app/data/chronos.db
+      - PORT=5000
+    restart: always
+
+  frontend:
+    build:
+      context: .
+      target: frontend-dev
+    container_name: calbridge-frontend-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount source code for hot-reloading
+      - ./frontend/src:/app/frontend/src
+      - ./frontend/index.html:/app/frontend/index.html
+      # Prevent host node_modules from overwriting container node_modules
+      - /app/frontend/node_modules
+    depends_on:
+      - backend
+    restart: always

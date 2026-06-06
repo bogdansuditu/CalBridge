@@ -1,0 +1,54 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String     @id @default(uuid())
+  username     String     @unique
+  passwordHash String
+  role         String     @default("USER") // "ADMIN" or "USER"
+  storageLimit Int        @default(0)      // 0 means unlimited
+  calendars    Calendar[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Calendar {
+  id           String    @id @default(uuid())
+  name         String
+  color        String    @default("#3b82f6") // Default blue HEX
+  isReadOnly   Boolean   @default(false)
+  feedUrl      String?                       // URL for remote .ics subscriptions
+  lastSyncedAt DateTime?
+  syncToken    Int       @default(1)         // Increments when any event is modified (CTAG helper)
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events       Event[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Event {
+  id          String   @id @default(uuid())
+  uid         String   // CalDAV event UID (e.g. from iCalendar data)
+  summary     String
+  description String?
+  location    String?
+  dtStart     DateTime
+  dtEnd       DateTime
+  isAllDay    Boolean  @default(false)
+  rrule       String?  // Recurrence rule string (RFC 5545)
+  sequence    Int      @default(0)
+  etag        String   // CalDAV caching ETag (usually timestamp or hash)
+  calendarId  String
+  calendar    Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([calendarId, uid])
+}
