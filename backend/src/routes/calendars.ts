@@ -2,9 +2,58 @@ import { Router, Response } from 'express';
 import { prisma } from '../db';
 import { requireWebAuth, WebRequest } from '../middlewares/auth';
 import { syncCalendar } from '../services/sync';
-import { parseCalendarIcs } from '../services/ical';
+import { parseCalendarIcs, generateCalendarIcs } from '../services/ical';
 
 const router = Router();
+
+// GET /api/calendars/feed/:id - Public/Token subscription feed (.ics format)
+// GET /api/calendars/feed/:id - Public/Token subscription feed (.ics format)
+router.get('/feed/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    // 1. Try finding by UUID directly (catch database error if id is not a valid UUID string format)
+    let calendar = await prisma.calendar.findUnique({
+      where: { id },
+      include: {
+        events: {
+          orderBy: { dtStart: 'asc' }
+        }
+      }
+    }).catch(() => null);
+
+    // 2. If not found by UUID, try matching by name or slugified name in memory (handles cases like Work.ics or Work_Events.ics)
+    if (!calendar) {
+      const decoded = decodeURIComponent(id).replace(/\.ics$/i, '').toLowerCase();
+      const cleanName = decoded.replace(/[_-]/g, ' ');
+
+      const allCalendars = await prisma.calendar.findMany({
+        include: {
+          events: {
+            orderBy: { dtStart: 'asc' }
+          }
+        }
+      });
+
+      calendar = allCalendars.find(cal => {
+        const calName = cal.name.toLowerCase();
+        return calName === decoded || calName === cleanName;
+      }) || null;
+    }
+
+    if (!calendar) {
+      return res.status(404).send('Calendar not found');
+    }
+
+    const icsContent = generateCalendarIcs(calendar.name, calendar.events);
+    
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${calendar.name.replace(/[^a-zA-Z0-9]/g, '_')}.ics"`);
+    return res.status(200).send(icsContent);
+  } catch (error) {
+    console.error('[Calendars Feed Route] Error:', error);
+    return res.status(500).send('Internal Server Error');
+  }
+});
 
 // Apply requireWebAuth middleware to all endpoints in this file
 router.use(requireWebAuth);

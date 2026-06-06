@@ -34,6 +34,7 @@ services:
       # Mount source code for hot-reloading
       - ./frontend/src:/app/frontend/src
       - ./frontend/index.html:/app/frontend/index.html
+      - ./frontend/public:/app/frontend/public
       # Prevent host node_modules from overwriting container node_modules
       - /app/frontend/node_modules
     depends_on:

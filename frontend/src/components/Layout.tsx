@@ -655,6 +655,73 @@ export default function Layout({
                 </div>
               )}
 
+              {/* Copyable CalDAV and WebDAV ICS Feed URL Links */}
+              {editingCalendar && (() => {
+                const calendarSlug = editingCalendar.name.trim().replace(/[^a-zA-Z0-9]/g, '_').replace(/__+/g, '_');
+                const caldavUrl = `${window.location.origin}/caldav/users/${user.username}/calendars/${calendarSlug}/`;
+                const subscriptionUrl = `${window.location.origin}/api/calendars/feed/${calendarSlug}.ics`;
+
+                return (
+                  <div className="pt-4 border-t border-zinc-150 dark:border-zinc-800/40 space-y-4 text-left">
+                    {/* CalDAV Sync URL */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                        CalDAV Sync URL
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={caldavUrl}
+                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2 text-xs text-zinc-650 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-350 outline-hidden select-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(caldavUrl);
+                            alert('CalDAV Sync URL copied to clipboard!');
+                          }}
+                          className="rounded-xl border border-zinc-200 px-3 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 cursor-pointer shrink-0"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500 block leading-tight mt-1">
+                        Use this URL in compatible clients like Thunderbird or Apple Calendar on Mac.
+                      </span>
+                    </div>
+
+                    {/* WebDAV ICS Feed URL */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                        iOS / Apple Calendar Subscription Feed (WebDAV .ics)
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={subscriptionUrl}
+                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2 text-xs text-zinc-650 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-350 outline-hidden select-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(subscriptionUrl);
+                            alert('Subscription feed URL copied to clipboard!');
+                          }}
+                          className="rounded-xl border border-zinc-200 px-3 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 cursor-pointer shrink-0"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500 block leading-tight mt-1">
+                        For iPhone: Go to Settings &gt; Calendar &gt; Accounts &gt; Add Account &gt; Other &gt; Add Subscribed Calendar and paste this URL.
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800/40">
                 <button
                   type="button"

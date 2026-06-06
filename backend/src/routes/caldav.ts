@@ -186,9 +186,23 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
   }
 
   // Retrieve calendar
-  const calendar = await prisma.calendar.findFirst({
+  let calendar = await prisma.calendar.findFirst({
     where: { id: calendarId, userId: authUser.id }
-  });
+  }).catch(() => null);
+
+  if (!calendar) {
+    const decoded = decodeURIComponent(calendarId).replace(/\.ics$/i, '').toLowerCase();
+    const cleanName = decoded.replace(/[_-]/g, ' ');
+
+    const allCalendars = await prisma.calendar.findMany({
+      where: { userId: authUser.id }
+    });
+
+    calendar = allCalendars.find(cal => {
+      const calName = cal.name.toLowerCase();
+      return calName === decoded || calName === cleanName;
+    }) || null;
+  }
 
   if (!calendar) {
     return res.status(404).send('Calendar Not Found');

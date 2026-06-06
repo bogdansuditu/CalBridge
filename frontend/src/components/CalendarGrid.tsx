@@ -47,8 +47,23 @@ export default function CalendarGrid({
   onEventUpdate,
   user
 }: CalendarGridProps) {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<ViewType>('month');
+  const [currentDate, setCurrentDate] = useState<Date>(() => {
+    const saved = localStorage.getItem('calbridge_current_date');
+    return saved ? new Date(saved) : new Date();
+  });
+  const [currentView, setCurrentView] = useState<ViewType>(() => {
+    const saved = localStorage.getItem('calbridge_current_view');
+    return (saved as ViewType) || 'month';
+  });
+
+  // Persist current view and date to localStorage
+  useEffect(() => {
+    localStorage.setItem('calbridge_current_view', currentView);
+  }, [currentView]);
+
+  useEffect(() => {
+    localStorage.setItem('calbridge_current_date', currentDate.toISOString());
+  }, [currentDate]);
 
   // Viewport detection for responsiveness
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -172,9 +187,11 @@ export default function CalendarGrid({
       const masterEnd = new Date(originalDtEnd || dtEnd);
 
       const rect = e.currentTarget.getBoundingClientRect();
+      const currentHourHeight = isMobile ? hourHeight : rect.height / 24;
+      const maxDropY = isMobile ? (24 * hourHeight - 15) : (rect.height - 15);
       const dropOffset = grabOffset || 0;
-      const dropY = Math.max(0, Math.min(24 * hourHeight - 15, e.clientY - rect.top - dropOffset));
-      const dropHourFloat = dropY / hourHeight;
+      const dropY = Math.max(0, Math.min(maxDropY, e.clientY - rect.top - dropOffset));
+      const dropHourFloat = dropY / currentHourHeight;
       const dropHour = Math.floor(dropHourFloat);
       const dropMinutes = Math.floor((dropHourFloat - dropHour) * 60);
 
@@ -218,7 +235,8 @@ export default function CalendarGrid({
         isCurrentMonth: true
       });
     }
-    const remainingSlots = 42 - grid.length;
+    const totalSlots = grid.length <= 35 ? 35 : 42;
+    const remainingSlots = totalSlots - grid.length;
     for (let i = 1; i <= remainingSlots; i++) {
       grid.push({
         date: new Date(year, month + 1, i),
@@ -239,27 +257,51 @@ export default function CalendarGrid({
     const todayDate = new Date();
 
     return (
-      <div className="h-full overflow-y-auto custom-scrollbar p-4 select-none">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className={`h-full ${isMobile ? 'overflow-hidden p-2' : 'overflow-y-auto p-4'} select-none`}>
+        <div className={`grid h-full ${
+          isMobile 
+            ? 'grid-cols-3 grid-rows-4 gap-x-2.5 gap-y-1' 
+            : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6'
+        }`}>
           {months.map(month => {
             const days = getYearMonthDays(year, month);
             return (
-              <div key={month} className="rounded-2xl border border-zinc-200/60 dark:border-zinc-800/40 bg-white/40 dark:bg-zinc-900/10 p-3 flex flex-col backdrop-blur-xs">
-                <h3 className="text-sm font-extrabold text-zinc-850 dark:text-zinc-200 mb-2 truncate">
+              <div 
+                key={month} 
+                className={`flex flex-col ${
+                  isMobile 
+                    ? 'p-1 bg-transparent border-0' 
+                    : 'rounded-2xl border border-zinc-200/60 dark:border-zinc-800/40 bg-white/40 dark:bg-zinc-900/10 p-3 backdrop-blur-xs'
+                }`}
+              >
+                <h3 
+                  className={`font-extrabold ${
+                    isMobile 
+                      ? 'text-xs mb-1 font-bold' 
+                      : 'text-sm text-zinc-850 dark:text-zinc-200 mb-2'
+                  } truncate`}
+                  style={isMobile ? { color: user?.accentColor || '#6366f1' } : {}}
+                >
                   {monthNames[month]}
                 </h3>
 
-                <div className="grid grid-cols-7 text-center text-[9px] font-bold text-zinc-400 dark:text-zinc-650 mb-1">
+                <div className={`grid grid-cols-7 text-center font-bold text-zinc-400 dark:text-zinc-650 ${
+                  isMobile ? 'text-[7.5px] mb-0.5' : 'text-[9px] mb-1'
+                }`}>
                   {weekdayLabels.map((lbl, idx) => (
                     <div key={idx}>{lbl}</div>
                   ))}
                 </div>
 
-                <div className="grid grid-cols-7 gap-y-0.5 text-center text-xs">
+                <div className={`grid grid-cols-7 text-center ${
+                  isMobile ? 'gap-y-0.5 text-[8.5px]' : 'gap-y-0.5 text-xs'
+                }`}>
                   {days.map(({ date, isCurrentMonth }, idx) => {
                     const isToday = isSameDay(date, todayDate);
                     const dayEvents = getEventsForDay(date);
                     const hasEvents = dayEvents.length > 0;
+                    const firstEventCal = hasEvents ? calendarMap.get(dayEvents[0].calendarId) : null;
+                    const eventDotColor = firstEventCal ? firstEventCal.color : '#6366f1';
 
                     return (
                       <div
@@ -274,16 +316,24 @@ export default function CalendarGrid({
                             : 'text-zinc-300 dark:text-zinc-700 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30'
                         } ${
                           isToday
-                            ? 'bg-indigo-650 text-white font-extrabold hover:bg-indigo-500'
+                            ? 'text-white font-extrabold hover:opacity-90'
                             : ''
                         }`}
+                        style={isToday ? { backgroundColor: user?.accentColor || '#6366f1' } : {}}
                       >
                         {date.getDate()}
                         {hasEvents && !isToday && (
-                          <span className="absolute bottom-0.5 h-1 w-1 rounded-full bg-indigo-500 dark:bg-indigo-400" />
+                          <span 
+                            className={`absolute rounded-full ${
+                              isMobile ? 'bottom-0 h-0.5 w-0.5' : 'bottom-0.5 h-1 w-1'
+                            }`}
+                            style={{ backgroundColor: eventDotColor }}
+                          />
                         )}
                         {hasEvents && isToday && (
-                          <span className="absolute bottom-0.5 h-1 w-1 rounded-full bg-white" />
+                          <span className={`absolute rounded-full bg-white ${
+                            isMobile ? 'bottom-0 h-0.5 w-0.5' : 'bottom-0.5 h-1 w-1'
+                          }`} />
                         )}
                       </div>
                     );
@@ -611,31 +661,50 @@ export default function CalendarGrid({
     const endMin = end.getHours() * 60 + end.getMinutes();
     const duration = Math.max(endMin - startMin, 30); // At least 30 minutes visual height
 
-    const top = (startMin / 60) * hourHeight;
-    const height = (duration / 60) * hourHeight;
-
-    return { top, height };
+    if (isMobile) {
+      const top = (startMin / 60) * hourHeight;
+      const height = (duration / 60) * hourHeight;
+      return { top: `${top}px`, height: `${height}px`, duration };
+    } else {
+      const topPct = (startMin / 1440) * 100;
+      const heightPct = (duration / 1440) * 100;
+      return { top: `${topPct}%`, height: `${heightPct}%`, duration };
+    }
   };
 
   // Render Day/Week Grid Core Columns
   const renderHoursGrid = (days: Date[]) => {
     return (
-      <div className="flex flex-1 overflow-y-auto custom-scrollbar h-full relative" style={{ height: 'calc(100% - 40px)' }}>
+      <div 
+        className={`flex flex-1 ${isMobile ? 'overflow-y-auto' : 'overflow-hidden'} custom-scrollbar h-full relative`} 
+        style={{ height: 'calc(100% - 40px)' }}
+      >
         {/* Time column labels */}
-        <div className="w-14 shrink-0 border-r border-zinc-200/50 dark:border-zinc-800/20 bg-zinc-50/20 dark:bg-zinc-900/10 select-none">
+        <div className="w-14 shrink-0 border-r border-zinc-200/50 dark:border-zinc-800/20 bg-zinc-50/20 dark:bg-zinc-900/10 select-none flex flex-col justify-between">
           {hourRows.map(hour => (
-            <div key={hour} className="text-[10.5px] text-zinc-400 font-semibold pr-2 text-right relative" style={{ height: `${hourHeight}px`, top: '-7px' }}>
+            <div 
+              key={hour} 
+              className="text-[10px] text-zinc-400 font-semibold pr-2 text-right relative flex items-center justify-end" 
+              style={{ 
+                height: isMobile ? `${hourHeight}px` : 'calc(100% / 24)',
+                marginTop: isMobile ? '-7px' : '0'
+              }}
+            >
               {hour === 0 ? '' : `${String(hour).padStart(2, '0')}:00`}
             </div>
           ))}
         </div>
 
         {/* Columns for days */}
-        <div className="flex flex-1 relative divide-x divide-zinc-200/50 dark:divide-zinc-800/30">
+        <div className={`flex flex-1 relative divide-x divide-zinc-200/50 dark:divide-zinc-800/30 ${isMobile ? '' : 'h-full'}`}>
           {/* Horizontal Grid lines */}
-          <div className="absolute inset-0 pointer-events-none flex flex-col">
+          <div className="absolute inset-0 pointer-events-none flex flex-col justify-between h-full">
             {hourRows.map(hour => (
-              <div key={hour} className="border-b border-zinc-200/50 dark:border-zinc-800/20 w-full" style={{ height: `${hourHeight}px` }} />
+              <div 
+                key={hour} 
+                className="border-b border-zinc-200/50 dark:border-zinc-800/20 w-full" 
+                style={{ height: isMobile ? `${hourHeight}px` : 'calc(100% / 24)' }} 
+              />
             ))}
           </div>
 
@@ -648,20 +717,21 @@ export default function CalendarGrid({
                 key={dIdx}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
+                  const currentHourHeight = isMobile ? hourHeight : rect.height / 24;
                   const clickY = e.clientY - rect.top;
-                  const clickHour = Math.floor(clickY / hourHeight);
+                  const clickHour = Math.floor(clickY / currentHourHeight);
                   const date = new Date(day);
                   date.setHours(clickHour, 0, 0, 0);
                   onSlotClick(date);
                 }}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDropOnHourGrid(e, day)}
-                className="flex-1 relative cursor-pointer hover:bg-zinc-50/10 dark:hover:bg-zinc-900/5"
-                style={{ height: `${24 * hourHeight}px` }}
+                className="flex-1 relative cursor-pointer hover:bg-zinc-50/10 dark:hover:bg-zinc-900/5 h-full"
+                style={{ height: isMobile ? `${24 * hourHeight}px` : '100%' }}
               >
                 {/* Event absolute blocks */}
                 {dayEvents.map(event => {
-                  const { top, height } = getEventPosition(event);
+                  const { top, height, duration } = getEventPosition(event);
                   const cal = calendarMap.get(event.calendarId);
                   const calColor = cal?.color || '#3b82f6';
 
@@ -675,8 +745,8 @@ export default function CalendarGrid({
                       draggable={!cal?.isReadOnly}
                       onDragStart={(e) => handleDragStart(e, event)}
                       style={{
-                        top: `${top}px`,
-                        height: `${height}px`,
+                        top: top,
+                        height: height,
                         borderLeftColor: calColor,
                         backgroundColor: `${calColor}15` // opacity hex
                       }}
@@ -685,17 +755,17 @@ export default function CalendarGrid({
                       <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate leading-tight">
                         {event.summary}
                       </span>
-                      {height > 35 && (
+                      {duration >= 60 && (
                         <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium truncate mt-0.5 select-none">
                           {new Date(event.dtStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(event.dtEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       )}
-                      {height > 55 && event.location && (
+                      {duration >= 90 && event.location && (
                         <span className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate flex items-center gap-0.5 mt-0.5">
-                          <MapPin className="h-3 w-3" /> {event.location}
+                          <MapPin className="h-3.5 w-3.5" /> {event.location}
                         </span>
                       )}
-                      {height > 75 && event.description && (
+                      {duration >= 120 && event.description && (
                         <p className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate mt-1">
                           {event.description}
                         </p>
@@ -915,13 +985,15 @@ export default function CalendarGrid({
             <button
               key={view}
               onClick={() => setCurrentView(view)}
-              className={`rounded-lg px-2.5 py-1.5 md:px-4 md:py-1.5 text-[10px] md:text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+              className={`rounded-lg px-2 py-1.5 md:px-4 md:py-1.5 text-[10px] md:text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
                 currentView === view
                   ? 'bg-white text-zinc-800 shadow-xs dark:bg-zinc-800 dark:text-zinc-100'
                   : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
               }`}
             >
-              {isMobile ? view[0] : view}
+              {isMobile 
+                ? (view === 'year' ? 'Yr' : view === 'month' ? 'Mon' : view === 'week' ? 'Wk' : view === 'day' ? 'Day' : 'List')
+                : (view === 'agenda' ? 'List' : view)}
             </button>
           ))}
         </div>
