@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { prisma } from '../db';
 import { requireCalDavAuth, CalDavRequest } from '../middlewares/auth';
-import { generateIcs, parseIcs } from '../services/ical';
+import { generateIcs, parseIcs, generateTodoIcs, parseTodoIcs } from '../services/ical';
 import { create } from 'xmlbuilder2';
 import xml2js from 'xml2js';
 
@@ -173,6 +173,7 @@ router.all('/users/:username/calendars', async (req: CalDavRequest, res) => {
             .up()
             .ele('C:supported-calendar-component-set')
               .ele('C:comp', { name: 'VEVENT' }).up()
+              .ele('C:comp', { name: 'VTODO' }).up()
             .up()
             .ele('A:calendar-color').txt(cal.color).up()
             // getctag is used by CalDAV clients to detect changes on the calendar collection level
@@ -245,6 +246,10 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
               .ele('collection').up()
               .ele('C:calendar').up()
             .up()
+            .ele('C:supported-calendar-component-set')
+              .ele('C:comp', { name: 'VEVENT' }).up()
+              .ele('C:comp', { name: 'VTODO' }).up()
+            .up()
             .ele('A:calendar-color').txt(calendar.color).up()
             .ele('getctag').txt(`ctag-${calendar.syncToken}`).up()
             .ele('C:sync-token').txt(`token-${calendar.syncToken}`).up()
@@ -253,7 +258,7 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
         .up()
       .up();
 
-      // Node 2+ (Depth 1): Return child items (events)
+      // Node 2+ (Depth 1): Return child items (events & todos)
       if (depth === '1') {
         const events = await prisma.event.findMany({
           where: { calendarId: calendar.id }
@@ -273,9 +278,28 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
             .up()
           .up();
         }
+
+        const todos = await prisma.todo.findMany({
+          where: { calendarId: calendar.id }
+        });
+
+        for (const todo of todos) {
+          const itemUrl = `${calUrl}${todo.id}.ics`;
+          doc.ele('response')
+            .ele('href').txt(itemUrl).up()
+            .ele('propstat')
+              .ele('prop')
+                .ele('getetag').txt(todo.etag).up()
+                .ele('getcontenttype').txt('text/calendar; charset=utf-8').up()
+                .ele('resourcetype').up() // empty for files
+              .up()
+              .ele('status').txt('HTTP/1.1 200 OK').up()
+            .up()
+          .up();
+        }
       }
     } else {
-      // PROPFIND on a specific event item
+      // PROPFIND on a specific event/todo item
       const event = await prisma.event.findFirst({
         where: {
           calendarId: calendar.id,
@@ -286,22 +310,47 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
         }
       });
 
-      if (!event) {
-        return res.status(404).send('Event Not Found');
-      }
-
-      const itemUrl = `${calUrl}${event.id}.ics`;
-      doc.ele('response')
-        .ele('href').txt(itemUrl).up()
-        .ele('propstat')
-          .ele('prop')
-            .ele('getetag').txt(event.etag).up()
-            .ele('getcontenttype').txt('text/calendar; charset=utf-8').up()
-            .ele('resourcetype').up()
+      if (event) {
+        const itemUrl = `${calUrl}${event.id}.ics`;
+        doc.ele('response')
+          .ele('href').txt(itemUrl).up()
+          .ele('propstat')
+            .ele('prop')
+              .ele('getetag').txt(event.etag).up()
+              .ele('getcontenttype').txt('text/calendar; charset=utf-8').up()
+              .ele('resourcetype').up()
+            .up()
+            .ele('status').txt('HTTP/1.1 200 OK').up()
           .up()
-          .ele('status').txt('HTTP/1.1 200 OK').up()
-        .up()
-      .up();
+        .up();
+      } else {
+        const todo = await prisma.todo.findFirst({
+          where: {
+            calendarId: calendar.id,
+            OR: [
+              { id: eventUid },
+              { uid: eventUid }
+            ]
+          }
+        });
+
+        if (!todo) {
+          return res.status(404).send('Resource Not Found');
+        }
+
+        const itemUrl = `${calUrl}${todo.id}.ics`;
+        doc.ele('response')
+          .ele('href').txt(itemUrl).up()
+          .ele('propstat')
+            .ele('prop')
+              .ele('getetag').txt(todo.etag).up()
+              .ele('getcontenttype').txt('text/calendar; charset=utf-8').up()
+              .ele('resourcetype').up()
+            .up()
+            .ele('status').txt('HTTP/1.1 200 OK').up()
+          .up()
+        .up();
+      }
     }
 
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
@@ -321,13 +370,29 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
         }
       });
 
-      if (!event) {
-        return res.status(404).send('Event Not Found');
+      if (event) {
+        res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+        res.setHeader('ETag', event.etag);
+        return res.status(200).send(generateIcs(event));
       }
 
-      res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-      res.setHeader('ETag', event.etag);
-      return res.status(200).send(generateIcs(event));
+      const todo = await prisma.todo.findFirst({
+        where: {
+          calendarId: calendar.id,
+          OR: [
+            { id: eventUid },
+            { uid: eventUid }
+          ]
+        }
+      });
+
+      if (todo) {
+        res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+        res.setHeader('ETag', todo.etag);
+        return res.status(200).send(generateTodoIcs(todo));
+      }
+
+      return res.status(404).send('Resource Not Found');
     } else {
       // GET request on calendar collection URL: output calendar name or simple diagnostic description
       return res.status(200).send(`CalDAV Calendar Collection: ${calendar.name}`);
@@ -350,65 +415,119 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
     }
 
     try {
-      const parsed = parseIcs(icsContent);
+      const isTodo = icsContent.includes('BEGIN:VTODO');
       const etag = `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`;
 
-      // Find existing event by ID (from URL) or UID (from iCalendar body)
-      const existingEvent = await prisma.event.findFirst({
-        where: {
-          calendarId: calendar.id,
-          OR: [
-            { id: eventUid },
-            { uid: parsed.uid }
-          ]
+      if (isTodo) {
+        const parsed = parseTodoIcs(icsContent);
+        const existingTodo = await prisma.todo.findFirst({
+          where: {
+            calendarId: calendar.id,
+            OR: [
+              { id: eventUid },
+              { uid: parsed.uid }
+            ]
+          }
+        });
+
+        let dbTodo;
+        if (existingTodo) {
+          dbTodo = await prisma.todo.update({
+            where: { id: existingTodo.id },
+            data: {
+              summary: parsed.summary,
+              description: parsed.description,
+              status: parsed.status,
+              completedAt: parsed.completedAt,
+              due: parsed.due,
+              dtStart: parsed.dtStart,
+              priority: parsed.priority,
+              sequence: { increment: 1 },
+              etag
+            }
+          });
+        } else {
+          dbTodo = await prisma.todo.create({
+            data: {
+              id: eventUid.length === 36 ? eventUid : undefined,
+              uid: parsed.uid,
+              summary: parsed.summary,
+              description: parsed.description,
+              status: parsed.status,
+              completedAt: parsed.completedAt,
+              due: parsed.due,
+              dtStart: parsed.dtStart,
+              priority: parsed.priority,
+              etag,
+              calendarId: calendar.id
+            }
+          });
         }
-      });
 
-      let dbEvent;
-      if (existingEvent) {
-        dbEvent = await prisma.event.update({
-          where: { id: existingEvent.id },
-          data: {
-            summary: parsed.summary,
-            description: parsed.description,
-            location: parsed.location,
-            dtStart: parsed.dtStart,
-            dtEnd: parsed.dtEnd,
-            isAllDay: parsed.isAllDay,
-            rrule: parsed.rrule,
-            sequence: { increment: 1 },
-            etag
-          }
+        await prisma.calendar.update({
+          where: { id: calendar.id },
+          data: { syncToken: { increment: 1 } }
         });
+
+        res.setHeader('ETag', dbTodo.etag);
+        return res.status(201).send();
       } else {
-        dbEvent = await prisma.event.create({
-          data: {
-            id: eventUid.length === 36 ? eventUid : undefined,
-            uid: parsed.uid,
-            summary: parsed.summary,
-            description: parsed.description,
-            location: parsed.location,
-            dtStart: parsed.dtStart,
-            dtEnd: parsed.dtEnd,
-            isAllDay: parsed.isAllDay,
-            rrule: parsed.rrule,
-            etag,
-            calendarId: calendar.id
+        const parsed = parseIcs(icsContent);
+        const existingEvent = await prisma.event.findFirst({
+          where: {
+            calendarId: calendar.id,
+            OR: [
+              { id: eventUid },
+              { uid: parsed.uid }
+            ]
           }
         });
+
+        let dbEvent;
+        if (existingEvent) {
+          dbEvent = await prisma.event.update({
+            where: { id: existingEvent.id },
+            data: {
+              summary: parsed.summary,
+              description: parsed.description,
+              location: parsed.location,
+              dtStart: parsed.dtStart,
+              dtEnd: parsed.dtEnd,
+              isAllDay: parsed.isAllDay,
+              rrule: parsed.rrule,
+              sequence: { increment: 1 },
+              etag
+            }
+          });
+        } else {
+          dbEvent = await prisma.event.create({
+            data: {
+              id: eventUid.length === 36 ? eventUid : undefined,
+              uid: parsed.uid,
+              summary: parsed.summary,
+              description: parsed.description,
+              location: parsed.location,
+              dtStart: parsed.dtStart,
+              dtEnd: parsed.dtEnd,
+              isAllDay: parsed.isAllDay,
+              rrule: parsed.rrule,
+              etag,
+              calendarId: calendar.id
+            }
+          });
+        }
+
+        await prisma.calendar.update({
+          where: { id: calendar.id },
+          data: { syncToken: { increment: 1 } }
+        });
+
+        res.setHeader('ETag', dbEvent.etag);
+        return res.status(201).send();
       }
-
-      // Increment syncToken
-      await prisma.calendar.update({
-        where: { id: calendar.id },
-        data: { syncToken: { increment: 1 } }
-      });
-
-      res.setHeader('ETag', dbEvent.etag);
-      return res.status(201).send();
     } catch (err) {
       console.error('[CalDAV PUT error]', err);
-      return res.status(500).send('Error parsing event');
+      return res.status(500).send('Error parsing resource');
     }
   }
 
@@ -433,13 +552,29 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
         }
       });
 
-      if (!event) {
-        return res.status(404).send('Event Not Found');
-      }
+      if (event) {
+        await prisma.event.delete({
+          where: { id: event.id }
+        });
+      } else {
+        const todo = await prisma.todo.findFirst({
+          where: {
+            calendarId: calendar.id,
+            OR: [
+              { id: eventUid },
+              { uid: eventUid }
+            ]
+          }
+        });
 
-      await prisma.event.delete({
-        where: { id: event.id }
-      });
+        if (!todo) {
+          return res.status(404).send('Resource Not Found');
+        }
+
+        await prisma.todo.delete({
+          where: { id: todo.id }
+        });
+      }
 
       // Increment syncToken
       await prisma.calendar.update({
@@ -457,7 +592,8 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
   // --- REPORT ---
   if (req.method === 'REPORT') {
     const bodyText = req.body || '';
-    let matchedEvents = [];
+    let matchedEvents: any[] = [];
+    let matchedTodos: any[] = [];
 
     try {
       // Parse the XML body safely using xml2js
@@ -502,6 +638,16 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
             ]
           }
         });
+
+        matchedTodos = await prisma.todo.findMany({
+          where: {
+            calendarId: calendar.id,
+            OR: [
+              { id: { in: uids } },
+              { uid: { in: uids } }
+            ]
+          }
+        });
       } else if (parsed && parsed['calendar-query']) {
         const timeRange = findTimeRange(parsed['calendar-query']);
         
@@ -515,34 +661,81 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
           return new Date(Date.UTC(y, m, d, hh, mm, ss));
         };
 
-        const whereClause: any = { calendarId: calendar.id };
+        // Component filtering check
+        let wantsEvent = true;
+        let wantsTodo = true;
 
-        if (timeRange && (timeRange.start || timeRange.end)) {
-          whereClause.OR = [
-            {
-              rrule: null,
-              dtEnd: timeRange.start ? { gte: parseXmlDate(timeRange.start) } : undefined,
-              dtStart: timeRange.end ? { lte: parseXmlDate(timeRange.end) } : undefined
-            },
-            {
-              rrule: { not: null }
+        const filter = parsed['calendar-query']['filter'];
+        if (filter && filter['comp-filter']) {
+          const vcalFilter = filter['comp-filter'];
+          const innerFilter = vcalFilter['comp-filter'];
+          if (innerFilter) {
+            const filters = Array.isArray(innerFilter) ? innerFilter : [innerFilter];
+            const names = filters.map(f => (f['$']?.name || '').toUpperCase());
+            if (names.length > 0) {
+              wantsEvent = names.includes('VEVENT');
+              wantsTodo = names.includes('VTODO');
             }
-          ];
+          }
         }
 
-        matchedEvents = await prisma.event.findMany({
-          where: whereClause
-        });
+        if (wantsEvent) {
+          const whereClause: any = { calendarId: calendar.id };
+
+          if (timeRange && (timeRange.start || timeRange.end)) {
+            whereClause.OR = [
+              {
+                rrule: null,
+                dtEnd: timeRange.start ? { gte: parseXmlDate(timeRange.start) } : undefined,
+                dtStart: timeRange.end ? { lte: parseXmlDate(timeRange.end) } : undefined
+              },
+              {
+                rrule: { not: null }
+              }
+            ];
+          }
+
+          matchedEvents = await prisma.event.findMany({
+            where: whereClause
+          });
+        }
+
+        if (wantsTodo) {
+          const whereClauseTodo: any = { calendarId: calendar.id };
+
+          if (timeRange && (timeRange.start || timeRange.end)) {
+            whereClauseTodo.OR = [
+              {
+                due: null // tasks without due date are always shown
+              },
+              {
+                due: {
+                  gte: timeRange.start ? parseXmlDate(timeRange.start) : undefined,
+                  lte: timeRange.end ? parseXmlDate(timeRange.end) : undefined
+                }
+              }
+            ];
+          }
+
+          matchedTodos = await prisma.todo.findMany({
+            where: whereClauseTodo
+          });
+        }
       } else {
-        // Fallback: return all events
+        // Fallback: return all events and todos
         matchedEvents = await prisma.event.findMany({
+          where: { calendarId: calendar.id }
+        });
+        matchedTodos = await prisma.todo.findMany({
           where: { calendarId: calendar.id }
         });
       }
     } catch (err) {
       console.error('[CalDAV REPORT XML Parse Error]', err);
-      // Fallback if XML is empty or malformed
       matchedEvents = await prisma.event.findMany({
+        where: { calendarId: calendar.id }
+      });
+      matchedTodos = await prisma.todo.findMany({
         where: { calendarId: calendar.id }
       });
     }
@@ -563,6 +756,23 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
         .ele('propstat')
           .ele('prop')
             .ele('getetag').txt(event.etag).up()
+            .ele('getcontenttype').txt('text/calendar; charset=utf-8').up()
+            .ele('C:calendar-data').txt(ics).up()
+          .up()
+          .ele('status').txt('HTTP/1.1 200 OK').up()
+        .up()
+      .up();
+    }
+
+    for (const todo of matchedTodos) {
+      const itemUrl = `${calUrl}${todo.id}.ics`;
+      const ics = generateTodoIcs(todo);
+
+      doc.ele('response')
+        .ele('href').txt(itemUrl).up()
+        .ele('propstat')
+          .ele('prop')
+            .ele('getetag').txt(todo.etag).up()
             .ele('getcontenttype').txt('text/calendar; charset=utf-8').up()
             .ele('C:calendar-data').txt(ics).up()
           .up()

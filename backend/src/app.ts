@@ -6,6 +6,7 @@ import authRouter from './routes/auth';
 import usersRouter from './routes/users';
 import calendarsRouter from './routes/calendars';
 import eventsRouter from './routes/events';
+import todosRouter from './routes/todos';
 import caldavRouter from './routes/caldav';
 
 const app = express();
@@ -70,6 +71,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/calendars', calendarsRouter);
 app.use('/api/events', eventsRouter);
+app.use('/api/todos', todosRouter);
 
 // Serve compiled React frontend static files in production
 const publicPath = path.join(__dirname, '../public');

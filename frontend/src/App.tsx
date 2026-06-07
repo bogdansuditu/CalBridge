@@ -17,22 +17,29 @@ interface CalendarData {
   lastSyncedAt: string | null;
 }
 
-interface EventData {
-  id: string;
+export interface CalendarItemData {
+  id?: string;
+  uid?: string;
   summary: string;
   description: string | null;
-  location: string | null;
+  location?: string | null;
   dtStart: string;
-  dtEnd: string;
-  isAllDay: boolean;
-  rrule: string | null;
+  dtEnd?: string;
+  isAllDay?: boolean;
+  rrule?: string | null;
+  status?: string;
+  completedAt?: string | null;
+  due?: string | null;
+  priority?: number;
   calendarId: string;
+  isTodo?: boolean;
 }
 
 export default function App() {
   const [user, setUser] = useState<{ id: string; username: string; role: string; accentColor?: string | null } | null>(null);
   const [calendars, setCalendars] = useState<CalendarData[]>([]);
-  const [events, setEvents] = useState<EventData[]>([]);
+  const [events, setEvents] = useState<CalendarItemData[]>([]);
+  const [todos, setTodos] = useState<CalendarItemData[]>([]);
   const [visibleCalendarIds, setVisibleCalendarIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'calendar' | 'admin'>('calendar');
   const [loading, setLoading] = useState(true);
@@ -48,7 +55,7 @@ export default function App() {
 
   // Event Modal trigger states
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarItemData | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
   // Apply theme when themeMode changes
@@ -132,6 +139,10 @@ export default function App() {
       // Fetch events
       const evtRes = await apiCall('/api/events');
       setEvents(evtRes.events);
+
+      // Fetch todos
+      const todoRes = await apiCall('/api/todos');
+      setTodos(todoRes.todos.map((t: any) => ({ ...t, isTodo: true })));
     } catch (error) {
       console.error('[Dashboard] Data fetch error:', error);
     }
@@ -170,7 +181,7 @@ export default function App() {
     setIsEventModalOpen(true);
   };
 
-  const handleOpenEditModal = (event: EventData) => {
+  const handleOpenEditModal = (event: CalendarItemData) => {
     setSelectedEvent(event);
     setSelectedDate(undefined);
     setIsEventModalOpen(true);
@@ -194,6 +205,28 @@ export default function App() {
     } catch (error: any) {
       console.error('[Dashboard] Event drag update error:', error);
       alert(error.message || 'Failed to update event times');
+    }
+  };
+
+  const handleToggleTodoComplete = async (todoId: string) => {
+    const todo = todos.find(t => t.id === todoId);
+    if (!todo) return;
+
+    const newStatus = todo.status === 'COMPLETED' ? 'NEEDS-ACTION' : 'COMPLETED';
+    const completedAt = newStatus === 'COMPLETED' ? new Date().toISOString() : null;
+
+    // Optimistic UI update
+    setTodos(prev => prev.map(t => t.id === todoId ? { ...t, status: newStatus, completedAt } : t));
+
+    try {
+      await apiCall(`/api/todos/${todoId}`, {
+        method: 'PUT',
+        json: { status: newStatus, completedAt }
+      });
+      loadData();
+    } catch (err) {
+      console.error('[App] Failed to toggle todo complete status:', err);
+      loadData();
     }
   };
 
@@ -230,11 +263,13 @@ export default function App() {
       {activeTab === 'calendar' ? (
         <CalendarGrid
           events={events}
+          todos={todos}
           calendars={calendars}
           visibleCalendarIds={visibleCalendarIds}
           onEventClick={handleOpenEditModal}
           onSlotClick={handleOpenCreateModal}
           onEventUpdate={handleEventUpdateTimes}
+          onToggleTodoComplete={handleToggleTodoComplete}
           user={user}
         />
       ) : (

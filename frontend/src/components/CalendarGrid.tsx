@@ -9,27 +9,35 @@ interface CalendarData {
   isReadOnly: boolean;
 }
 
-interface EventData {
-  id: string;
+interface CalendarItemData {
+  id?: string;
+  uid?: string;
   summary: string;
   description: string | null;
-  location: string | null;
+  location?: string | null;
   dtStart: string;
-  dtEnd: string;
-  isAllDay: boolean;
-  rrule: string | null;
+  dtEnd?: string;
+  isAllDay?: boolean;
+  rrule?: string | null;
+  status?: string;
+  completedAt?: string | null;
+  due?: string | null;
+  priority?: number;
   calendarId: string;
+  isTodo?: boolean;
   originalDtStart?: string;
   originalDtEnd?: string;
 }
 
 interface CalendarGridProps {
-  events: EventData[];
+  events: CalendarItemData[];
+  todos: CalendarItemData[];
   calendars: CalendarData[];
   visibleCalendarIds: Set<string>;
-  onEventClick: (event: EventData) => void;
+  onEventClick: (event: CalendarItemData) => void;
   onSlotClick: (date: Date) => void;
   onEventUpdate?: (eventId: string, newStart: Date, newEnd: Date) => void;
+  onToggleTodoComplete?: (todoId: string) => void;
   user?: { accentColor?: string | null };
 }
 
@@ -40,11 +48,13 @@ const hourHeight = 60; // 60px per hour (1px per minute)
 
 export default function CalendarGrid({
   events,
+  todos,
   calendars,
   visibleCalendarIds,
   onEventClick,
   onSlotClick,
   onEventUpdate,
+  onToggleTodoComplete,
   user
 }: CalendarGridProps) {
   const [currentDate, setCurrentDate] = useState<Date>(() => {
@@ -78,6 +88,7 @@ export default function CalendarGrid({
 
   // Filter events based on active calendars in sidebar
   const activeEvents = events.filter(e => visibleCalendarIds.has(e.calendarId));
+  const activeTodos = todos.filter(t => visibleCalendarIds.has(t.calendarId));
 
   const calendarMap = new Map(calendars.map(c => [c.id, c]));
 
@@ -115,7 +126,7 @@ export default function CalendarGrid({
   };
 
   // Drag and Drop Handlers
-  const handleDragStart = (e: React.DragEvent, event: EventData) => {
+  const handleDragStart = (e: React.DragEvent, event: CalendarItemData) => {
     const cal = calendars.find(c => c.id === event.calendarId);
     if (cal?.isReadOnly) {
       e.preventDefault();
@@ -422,13 +433,12 @@ export default function CalendarGrid({
            d1.getDate() === d2.getDate();
   };
 
-  // Get events on a specific day
+  // Get events and todos on a specific day
   const getEventsForDay = (date: Date) => {
-    return activeEvents.filter(event => {
+    const matchedEvents = activeEvents.filter(event => {
       const start = new Date(event.dtStart);
-      const end = new Date(event.dtEnd);
+      const end = event.dtEnd ? new Date(event.dtEnd) : new Date(event.dtStart);
       
-      // All day matching or date intersection
       const d = new Date(date);
       d.setHours(0, 0, 0, 0);
       const nextD = new Date(d);
@@ -436,6 +446,18 @@ export default function CalendarGrid({
 
       return start < nextD && end >= d;
     });
+
+    const matchedTodos = activeTodos.filter(todo => {
+      if (!todo.due && !todo.dtStart) return false;
+      const dueVal = todo.due || todo.dtStart;
+      const due = new Date(dueVal!);
+      return isSameDay(due, date);
+    });
+
+    return [
+      ...matchedEvents.map(e => ({ ...e, isTodo: false })),
+      ...matchedTodos.map(t => ({ ...t, isTodo: true }))
+    ];
   };
 
   // Format header title
@@ -528,32 +550,74 @@ export default function CalendarGrid({
             
             <div className="space-y-2">
               {getEventsForDay(currentDate).length === 0 ? (
-                <div className="text-center py-8 text-zinc-400 dark:text-zinc-600">
-                  <p className="text-xs italic">No events scheduled for this day</p>
+                <div className="text-center py-8 text-zinc-400 dark:text-zinc-650">
+                  <p className="text-xs italic">No events or reminders scheduled for this day</p>
                 </div>
               ) : (
-                getEventsForDay(currentDate).map(event => {
-                  const cal = calendarMap.get(event.calendarId);
+                getEventsForDay(currentDate).map(item => {
+                  const isTodo = !!item.isTodo;
+                  const cal = calendarMap.get(item.calendarId);
                   const calColor = cal?.color || '#3b82f6';
-                  const start = new Date(event.dtStart);
-                  const end = new Date(event.dtEnd);
+                  const startVal = isTodo ? (item.due || item.dtStart) : item.dtStart;
+                  const start = new Date(startVal);
+                  const endVal = isTodo ? null : (item.dtEnd ? new Date(item.dtEnd) : null);
+                  const isCompleted = item.status === 'COMPLETED';
+
+                  if (isTodo) {
+                    return (
+                      <div
+                        key={`${item.id}-${startVal}`}
+                        onClick={() => onEventClick(item)}
+                        style={{ borderLeftColor: calColor }}
+                        className={`flex items-center justify-between p-3 rounded-2xl border border-zinc-100 dark:border-zinc-800/40 bg-white dark:bg-zinc-900/30 border-l-4 shadow-2xs hover:shadow-xs cursor-pointer transition-all ${
+                          isCompleted ? 'opacity-50' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onToggleTodoComplete && item.id) {
+                                onToggleTodoComplete(item.id);
+                              }
+                            }}
+                            className={`h-4 w-4 shrink-0 rounded-full border border-zinc-405 dark:border-zinc-650 flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-transform ${
+                              isCompleted ? 'bg-zinc-500 border-zinc-500' : 'bg-transparent'
+                            }`}
+                          >
+                            {isCompleted && (
+                              <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                          <span className={`text-xs font-bold text-zinc-850 dark:text-zinc-200 truncate ${
+                            isCompleted ? 'line-through text-zinc-450 dark:text-zinc-600' : ''
+                          }`}>{item.summary}</span>
+                        </div>
+                        <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-semibold flex items-center gap-0.5">
+                          <Clock className="h-3.5 w-3.5" /> Due: {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div
-                      key={`${event.id}-${event.dtStart}`}
-                      onClick={() => onEventClick(event)}
+                      key={`${item.id}-${item.dtStart}`}
+                      onClick={() => onEventClick(item)}
                       style={{ borderLeftColor: calColor }}
                       className="flex flex-col p-3 rounded-2xl border border-zinc-100 dark:border-zinc-800/40 bg-white dark:bg-zinc-900/30 border-l-4 shadow-2xs hover:shadow-xs cursor-pointer transition-all"
                     >
-                      <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">{event.summary}</span>
+                      <span className="text-xs font-bold text-zinc-850 dark:text-zinc-200 truncate">{item.summary}</span>
                       <div className="flex items-center gap-3 mt-1.5 text-[10px] text-zinc-400 dark:text-zinc-500 font-semibold">
                         <span className="flex items-center gap-0.5">
                           <Clock className="h-3.5 w-3.5" />
-                          {event.isAllDay ? 'All-day' : `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                          {item.isAllDay ? 'All-day' : `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – ${endVal ? endVal.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}`}
                         </span>
-                        {event.location && (
+                        {item.location && (
                           <span className="flex items-center gap-0.5">
-                            <MapPin className="h-3.5 w-3.5" /> {event.location}
+                            <MapPin className="h-3.5 w-3.5" /> {item.location}
                           </span>
                         )}
                       </div>
@@ -619,22 +683,67 @@ export default function CalendarGrid({
 
                 {/* Event Tags inside Grid Day Slot */}
                 <div className="space-y-1 flex-1 overflow-y-auto custom-scrollbar">
-                  {dayEvents.slice(0, 4).map(event => {
-                    const cal = calendarMap.get(event.calendarId);
+                  {dayEvents.slice(0, 4).map(item => {
+                    const isTodo = !!item.isTodo;
+                    const cal = calendarMap.get(item.calendarId);
                     const calColor = cal?.color || '#3b82f6';
+                    const isCompleted = item.status === 'COMPLETED';
+
+                    if (isTodo) {
+                      return (
+                        <div
+                          key={`${item.id}-${item.due || item.dtStart}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEventClick(item);
+                          }}
+                          style={{
+                            borderLeftColor: calColor,
+                            borderLeftWidth: '3px',
+                            borderStyle: 'solid',
+                            backgroundColor: isCompleted ? `${calColor}05` : `${calColor}15`
+                          }}
+                          className={`text-[10.5px] truncate font-medium rounded-r-md px-1.5 py-0.5 text-zinc-700 dark:text-zinc-350 hover:scale-[1.01] transition-transform select-none flex items-center gap-1 cursor-pointer ${
+                            isCompleted ? 'opacity-50' : ''
+                          }`}
+                        >
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onToggleTodoComplete && item.id) {
+                                onToggleTodoComplete(item.id);
+                              }
+                            }}
+                            className={`h-3 w-3 shrink-0 rounded-full border border-zinc-400 dark:border-zinc-650 flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-transform ${
+                              isCompleted ? 'bg-zinc-500 border-zinc-500' : 'bg-transparent'
+                            }`}
+                          >
+                            {isCompleted && (
+                              <svg className="h-2 w-2 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                          <span className={`truncate ${isCompleted ? 'line-through text-zinc-450 dark:text-zinc-600' : ''}`}>
+                            {item.summary}
+                          </span>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
-                        key={`${event.id}-${event.dtStart}`}
+                        key={`${item.id}-${item.dtStart}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onEventClick(event);
+                          onEventClick(item);
                         }}
                         draggable={!cal?.isReadOnly}
-                        onDragStart={(e) => handleDragStart(e, event)}
+                        onDragStart={(e) => handleDragStart(e, item)}
                         style={{ borderLeftColor: calColor }}
                         className="text-[10.5px] truncate font-medium border-l-3 rounded-r-sm bg-zinc-100/60 dark:bg-zinc-800/40 px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 hover:scale-[1.01] transition-transform select-none"
                       >
-                        {event.summary}
+                        {item.summary}
                       </div>
                     );
                   })}
@@ -653,9 +762,9 @@ export default function CalendarGrid({
   };
 
   // Calculate layout coordinates for a specific event
-  const getEventPosition = (event: EventData) => {
+  const getEventPosition = (event: CalendarItemData) => {
     const start = new Date(event.dtStart);
-    const end = new Date(event.dtEnd);
+    const end = event.dtEnd ? new Date(event.dtEnd) : new Date(new Date(event.dtStart).getTime() + 30 * 60 * 1000);
 
     const startMin = start.getHours() * 60 + start.getMinutes();
     const endMin = end.getHours() * 60 + end.getMinutes();
@@ -736,20 +845,66 @@ export default function CalendarGrid({
                 style={{ height: isMobile ? `${24 * hourHeight}px` : '100%' }}
               >
                 {/* Event absolute blocks */}
-                {dayEvents.map(event => {
-                  const { top, height, duration } = getEventPosition(event);
-                  const cal = calendarMap.get(event.calendarId);
+                {dayEvents.map(item => {
+                  const isTodo = !!item.isTodo;
+                  const { top, height, duration } = getEventPosition(item);
+                  const cal = calendarMap.get(item.calendarId);
                   const calColor = cal?.color || '#3b82f6';
+                  const isCompleted = item.status === 'COMPLETED';
+
+                  if (isTodo) {
+                    return (
+                      <div
+                        key={`${item.id}-${item.due || item.dtStart}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEventClick(item);
+                        }}
+                        style={{
+                          top: top,
+                          height: '32px',
+                          border: `1.5px dashed ${calColor}`,
+                          backgroundColor: isCompleted ? `${calColor}05` : `${calColor}10`
+                        }}
+                        className={`absolute left-1 right-1 rounded-lg px-2 py-1.5 shadow-2xs hover:shadow-xs transition-all overflow-hidden flex items-center gap-2 text-left cursor-pointer select-none ${
+                          isCompleted ? 'opacity-50' : ''
+                        }`}
+                      >
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onToggleTodoComplete && item.id) {
+                              onToggleTodoComplete(item.id);
+                            }
+                          }}
+                          className={`h-4 w-4 shrink-0 rounded-full border border-zinc-400 dark:border-zinc-650 flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-transform ${
+                            isCompleted ? 'bg-zinc-500 border-zinc-500' : 'bg-transparent'
+                          }`}
+                        >
+                          {isCompleted && (
+                            <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className={`text-xs font-bold text-zinc-850 dark:text-zinc-200 truncate leading-tight ${
+                          isCompleted ? 'line-through text-zinc-450 dark:text-zinc-600' : ''
+                        }`}>
+                          {item.summary}
+                        </span>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div
-                      key={`${event.id}-${event.dtStart}`}
+                      key={`${item.id}-${item.dtStart}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onEventClick(event);
+                        onEventClick(item);
                       }}
                       draggable={!cal?.isReadOnly}
-                      onDragStart={(e) => handleDragStart(e, event)}
+                      onDragStart={(e) => handleDragStart(e, item)}
                       style={{
                         top: top,
                         height: height,
@@ -758,22 +913,22 @@ export default function CalendarGrid({
                       }}
                       className="absolute left-1 right-1 rounded-r-lg border-l-4 p-2 shadow-xs hover:shadow-md hover:brightness-95 active:scale-99 transition-all overflow-hidden flex flex-col justify-start text-left cursor-pointer select-none"
                     >
-                      <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate leading-tight">
-                        {event.summary}
+                      <span className="text-xs font-bold text-zinc-850 dark:text-zinc-200 truncate leading-tight">
+                        {item.summary}
                       </span>
                       {duration >= 60 && (
                         <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium truncate mt-0.5 select-none">
-                          {new Date(event.dtStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(event.dtEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(item.dtStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {item.dtEnd ? new Date(item.dtEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                       )}
-                      {duration >= 90 && event.location && (
+                      {duration >= 90 && item.location && (
                         <span className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate flex items-center gap-0.5 mt-0.5">
-                          <MapPin className="h-3.5 w-3.5" /> {event.location}
+                          <MapPin className="h-3.5 w-3.5" /> {item.location}
                         </span>
                       )}
-                      {duration >= 120 && event.description && (
+                      {duration >= 120 && item.description && (
                         <p className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate mt-1">
-                          {event.description}
+                          {item.description}
                         </p>
                       )}
                     </div>
@@ -847,20 +1002,35 @@ export default function CalendarGrid({
       return start.getMonth() === currentMonth && start.getFullYear() === currentYear;
     });
 
-    // Sort events by dtStart
-    const sorted = [...monthlyEvents].sort((a, b) => new Date(a.dtStart).getTime() - new Date(b.dtStart).getTime());
+    const monthlyTodos = (todos || []).filter(todo => {
+      if (!todo.due && !todo.dtStart) return false;
+      const due = new Date(todo.due || todo.dtStart);
+      return due.getMonth() === currentMonth && due.getFullYear() === currentYear;
+    });
+
+    const merged = [
+      ...monthlyEvents.map(e => ({ ...e, isTodo: false })),
+      ...monthlyTodos.map(t => ({ ...t, isTodo: true }))
+    ];
+    // Sort items by start/due time
+    merged.sort((a, b) => {
+      const aTime = a.isTodo ? new Date(a.due || a.dtStart).getTime() : new Date(a.dtStart).getTime();
+      const bTime = b.isTodo ? new Date(b.due || b.dtStart).getTime() : new Date(b.dtStart).getTime();
+      return aTime - bTime;
+    });
     
-    // Group events by date
-    const groups: { [key: string]: { date: Date; events: EventData[] } } = {};
-    for (const evt of sorted) {
-      const dateKey = new Date(evt.dtStart).toDateString();
+    // Group items by date
+    const groups: { [key: string]: { date: Date; items: any[] } } = {};
+    for (const item of merged) {
+      const startVal = item.isTodo ? (item.due || item.dtStart) : item.dtStart;
+      const dateKey = new Date(startVal).toDateString();
       if (!groups[dateKey]) {
         groups[dateKey] = {
-          date: new Date(evt.dtStart),
-          events: []
+          date: new Date(startVal),
+          items: []
         };
       }
-      groups[dateKey].events.push(evt);
+      groups[dateKey].items.push(item);
     }
 
     const groupList = Object.values(groups);
@@ -868,10 +1038,10 @@ export default function CalendarGrid({
     return (
       <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
         {groupList.length === 0 ? (
-          <div className="text-center py-20 text-zinc-400 dark:text-zinc-600 select-none">
+          <div className="text-center py-20 text-zinc-400 dark:text-zinc-650 select-none">
             <CalendarIcon className="h-12 w-12 mx-auto mb-3 opacity-40" />
-            <p className="font-semibold text-sm">No scheduled events</p>
-            <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Events from your active calendars will show up here.</p>
+            <p className="font-semibold text-sm">No scheduled events or reminders</p>
+            <p className="text-xs text-zinc-450 dark:text-zinc-550 mt-1">Items from your active calendars will show up here.</p>
           </div>
         ) : (
           groupList.map((group, idx) => (
@@ -886,30 +1056,85 @@ export default function CalendarGrid({
                 </span>
               </div>
 
-              {/* Day Events Column */}
+              {/* Day Items Column */}
               <div className="flex-1 space-y-3">
-                {group.events.map(event => {
-                  const cal = calendarMap.get(event.calendarId);
+                {group.items.map(item => {
+                  const isTodo = !!item.isTodo;
+                  const cal = calendarMap.get(item.calendarId);
                   const calColor = cal?.color || '#3b82f6';
-                  const start = new Date(event.dtStart);
-                  const end = new Date(event.dtEnd);
+                  const isCompleted = item.status === 'COMPLETED';
+
+                  if (isTodo) {
+                    const startVal = item.due || item.dtStart;
+                    const due = new Date(startVal);
+
+                    return (
+                      <div
+                        key={`${item.id}-${startVal}`}
+                        onClick={() => onEventClick(item)}
+                        className={`group flex flex-col sm:flex-row justify-between items-start sm:items-center p-3.5 rounded-2xl border border-zinc-100 dark:border-zinc-800/50 bg-white dark:bg-zinc-900/30 shadow-xs hover:shadow-md cursor-pointer transition-all ${
+                          isCompleted ? 'opacity-50' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Interactive Checkbox */}
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onToggleTodoComplete && item.id) {
+                                onToggleTodoComplete(item.id);
+                              }
+                            }}
+                            className={`h-5 w-5 shrink-0 rounded-full border border-zinc-400 dark:border-zinc-600 flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-transform ${
+                              isCompleted ? 'bg-zinc-500 border-zinc-500' : 'bg-transparent'
+                            }`}
+                          >
+                            {isCompleted && (
+                              <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+
+                          <div>
+                            <h4 className={`font-bold text-sm text-zinc-850 dark:text-zinc-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors ${
+                              isCompleted ? 'line-through text-zinc-450 dark:text-zinc-650' : ''
+                            }`}>
+                              {item.summary}
+                            </h4>
+                          </div>
+                        </div>
+
+                        {/* Due info */}
+                        <div className="text-xs text-zinc-400 dark:text-zinc-500 font-semibold flex items-center gap-1 mt-2 sm:mt-0 select-none">
+                          <Clock className="h-3.5 w-3.5" />
+                          <span>
+                            Due: {due.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const start = new Date(item.dtStart);
+                  const end = item.dtEnd ? new Date(item.dtEnd) : null;
 
                   return (
                     <div
-                      key={`${event.id}-${event.dtStart}`}
-                      onClick={() => onEventClick(event)}
+                      key={`${item.id}-${item.dtStart}`}
+                      onClick={() => onEventClick(item)}
                       className="group flex flex-col sm:flex-row justify-between items-start sm:items-center p-3.5 rounded-2xl border border-zinc-100 dark:border-zinc-800/50 bg-white dark:bg-zinc-900/30 shadow-xs hover:shadow-md cursor-pointer transition-all"
                     >
                       <div className="flex items-center gap-3">
                         {/* Calendar indicator dot */}
                         <div className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: calColor }} />
                         <div>
-                          <h4 className="font-bold text-sm text-zinc-800 dark:text-zinc-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                            {event.summary}
+                          <h4 className="font-bold text-sm text-zinc-850 dark:text-zinc-200 group-hover:text-indigo-650 dark:group-hover:text-indigo-400 transition-colors">
+                            {item.summary}
                           </h4>
-                          {event.location && (
+                          {item.location && (
                             <span className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5 flex items-center gap-0.5">
-                              <MapPin className="h-3.5 w-3.5" /> {event.location}
+                              <MapPin className="h-3.5 w-3.5" /> {item.location}
                             </span>
                           )}
                         </div>
@@ -918,11 +1143,11 @@ export default function CalendarGrid({
                       {/* Time */}
                       <div className="text-xs text-zinc-400 dark:text-zinc-500 font-semibold flex items-center gap-1 mt-2 sm:mt-0 select-none">
                         <Clock className="h-3.5 w-3.5" />
-                        {event.isAllDay ? (
+                        {item.isAllDay ? (
                           <span>All-Day</span>
                         ) : (
                           <span>
-                            {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                           </span>
                         )}
                       </div>

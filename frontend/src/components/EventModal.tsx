@@ -11,29 +11,36 @@ interface CalendarData {
   isReadOnly: boolean;
 }
 
-interface EventData {
+export interface CalendarItemData {
   id?: string;
+  uid?: string;
   summary: string;
   description: string | null;
-  location: string | null;
-  dtStart: Date | string;
-  dtEnd: Date | string;
-  isAllDay: boolean;
-  rrule: string | null;
+  location?: string | null;
+  dtStart: string;
+  dtEnd?: string;
+  isAllDay?: boolean;
+  rrule?: string | null;
+  status?: string;
+  completedAt?: string | null;
+  due?: string | null;
+  priority?: number;
   calendarId: string;
+  isTodo?: boolean;
 }
 
 interface EventModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: () => void;
-  event: EventData | null; // Null means create mode
+  event: CalendarItemData | null; // Null means create mode
   calendars: CalendarData[];
   selectedDate?: Date; // Pre-filled date when clicking on a grid slot
   user?: { accentColor?: string | null };
 }
 
 export default function EventModal({ isOpen, onClose, onSave, event, calendars, selectedDate, user }: EventModalProps) {
+  const [itemType, setItemType] = useState<'event' | 'reminder'>('event');
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
@@ -42,6 +49,8 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
   const [isAllDay, setIsAllDay] = useState(false);
   const [rrule, setRrule] = useState('');
   const [calendarId, setCalendarId] = useState('');
+  const [priority, setPriority] = useState<number>(0);
+  const [status, setStatus] = useState<string>('NEEDS-ACTION');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [repeatEndType, setRepeatEndType] = useState<'never' | 'date'>('never');
@@ -54,14 +63,18 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
   useEffect(() => {
     if (isOpen) {
       setError(null);
-      setLoading(false); // Reset loading when opened (prevents freeze)
+      setLoading(false); // Reset loading when opened
       if (event) {
         // Edit mode
+        const isReminder = !!(event.isTodo || event.status !== undefined);
+        setItemType(isReminder ? 'reminder' : 'event');
         setSummary(event.summary || '');
         setDescription(event.description || '');
         setLocation(event.location || '');
-        setIsAllDay(event.isAllDay || false);
+        setIsAllDay(!!event.isAllDay);
         setCalendarId(event.calendarId);
+        setPriority(event.priority || 0);
+        setStatus(event.status || 'NEEDS-ACTION');
 
         let baseRrule = event.rrule || '';
         let endType: 'never' | 'date' = 'never';
@@ -86,14 +99,23 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
         setRepeatEndType(endType);
         setRepeatUntilDate(untilDate);
 
-        const start = new Date(event.dtStart);
-        const end = new Date(event.dtEnd);
-        
-        setDtStart(formatDateForInput(start, event.isAllDay));
-        setDtEnd(formatDateForInput(end, event.isAllDay));
-        setHasChangedEndDate(true);
+        const startVal = isReminder ? (event.due || event.dtStart) : event.dtStart;
+        const start = new Date(startVal);
+        setDtStart(formatDateForInput(start, !!event.isAllDay));
+
+        if (!isReminder && event.dtEnd) {
+          const end = new Date(event.dtEnd);
+          setDtEnd(formatDateForInput(end, !!event.isAllDay));
+          setHasChangedEndDate(true);
+        } else {
+          const fallbackEnd = new Date(start.getTime());
+          fallbackEnd.setHours(fallbackEnd.getHours() + 1);
+          setDtEnd(formatDateForInput(fallbackEnd, !!event.isAllDay));
+          setHasChangedEndDate(false);
+        }
       } else {
         // Create mode
+        setItemType('event');
         setSummary('');
         setDescription('');
         setLocation('');
@@ -101,6 +123,8 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
         setRrule('');
         setRepeatEndType('never');
         setRepeatUntilDate('');
+        setPriority(0);
+        setStatus('NEEDS-ACTION');
         setHasChangedEndDate(false);
         
         // Select first writable calendar by default
@@ -142,7 +166,7 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
 
   const handleStartChange = (newStart: string) => {
     setDtStart(newStart);
-    if (!hasChangedEndDate) {
+    if (!hasChangedEndDate && itemType === 'event') {
       try {
         const startD = new Date(newStart);
         if (!isNaN(startD.getTime())) {
@@ -196,84 +220,126 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
       return;
     }
 
-    // Convert input strings to Date objects
     let startObj: Date;
-    let endObj: Date;
-
     if (isAllDay) {
-      // For all-day events, save as starting at 00:00 UTC and ending at 00:00 UTC next day
       startObj = new Date(dtStart + 'T00:00:00Z');
-      endObj = new Date(dtEnd + 'T00:00:00Z');
     } else {
       startObj = new Date(dtStart);
-      endObj = new Date(dtEnd);
     }
 
-    if (isNaN(startObj.getTime()) || isNaN(endObj.getTime())) {
-      setError('Invalid start or end date');
+    if (isNaN(startObj.getTime())) {
+      setError('Invalid date/time selected');
       setLoading(false);
       return;
     }
 
-    if (endObj <= startObj) {
-      setError('End date/time must be after start date/time');
-      setLoading(false);
-      return;
-    }
+    if (itemType === 'reminder') {
+      const payload = {
+        calendarId,
+        summary: summary.trim() || 'Untitled Reminder',
+        description: description.trim() || null,
+        status,
+        due: startObj.toISOString(),
+        dtStart: startObj.toISOString(),
+        priority
+      };
 
-    let finalRrule = rrule;
-    if (finalRrule && repeatEndType === 'date' && repeatUntilDate) {
-      const cleanDate = repeatUntilDate.replace(/-/g, '');
-      finalRrule = `${finalRrule};UNTIL=${cleanDate}T235959Z`;
-    }
-
-    const payload = {
-      calendarId,
-      summary: summary.trim() || 'Untitled Event',
-      description: description.trim() || null,
-      location: location.trim() || null,
-      dtStart: startObj.toISOString(),
-      dtEnd: endObj.toISOString(),
-      isAllDay,
-      rrule: finalRrule || null
-    };
-
-    try {
-      if (event && event.id) {
-        // Edit mode
-        await apiCall(`/api/events/${event.id}`, {
-          method: 'PUT',
-          json: payload
-        });
-      } else {
-        // Create mode
-        await apiCall('/api/events', {
-          method: 'POST',
-          json: payload
-        });
+      try {
+        if (event && event.id && event.isTodo) {
+          // Edit Mode Todo
+          await apiCall(`/api/todos/${event.id}`, {
+            method: 'PUT',
+            json: payload
+          });
+        } else {
+          // Create Mode Todo
+          await apiCall('/api/todos', {
+            method: 'POST',
+            json: payload
+          });
+        }
+        onSave();
+      } catch (err: any) {
+        setError(err.message || 'Failed to save reminder');
+      } finally {
+        setLoading(false);
       }
-      onSave();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save event');
-    } finally {
-      setLoading(false);
+    } else {
+      // Event Item type submit
+      let endObj: Date;
+      if (isAllDay) {
+        endObj = new Date(dtEnd + 'T00:00:00Z');
+      } else {
+        endObj = new Date(dtEnd);
+      }
+
+      if (isNaN(endObj.getTime())) {
+        setError('Invalid end date/time');
+        setLoading(false);
+        return;
+      }
+
+      if (endObj <= startObj) {
+        setError('End date/time must be after start date/time');
+        setLoading(false);
+        return;
+      }
+
+      let finalRrule = rrule;
+      if (finalRrule && repeatEndType === 'date' && repeatUntilDate) {
+        const cleanDate = repeatUntilDate.replace(/-/g, '');
+        finalRrule = `${finalRrule};UNTIL=${cleanDate}T235959Z`;
+      }
+
+      const payload = {
+        calendarId,
+        summary: summary.trim() || 'Untitled Event',
+        description: description.trim() || null,
+        location: location.trim() || null,
+        dtStart: startObj.toISOString(),
+        dtEnd: endObj.toISOString(),
+        isAllDay,
+        rrule: finalRrule || null
+      };
+
+      try {
+        if (event && event.id && !event.isTodo) {
+          // Edit Mode Event
+          await apiCall(`/api/events/${event.id}`, {
+            method: 'PUT',
+            json: payload
+          });
+        } else {
+          // Create Mode Event
+          await apiCall('/api/events', {
+            method: 'POST',
+            json: payload
+          });
+        }
+        onSave();
+      } catch (err: any) {
+        setError(err.message || 'Failed to save event');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   const handleDelete = async () => {
     if (!event || !event.id) return;
-    if (!confirm('Are you sure you want to delete this event?')) return;
+    if (!confirm(`Are you sure you want to delete this ${itemType}?`)) return;
 
     setError(null);
     setLoading(true);
 
     try {
-      await apiCall(`/api/events/${event.id}`, {
+      const endpoint = event.isTodo ? `/api/todos/${event.id}` : `/api/events/${event.id}`;
+      await apiCall(endpoint, {
         method: 'DELETE'
       });
       onSave();
     } catch (err: any) {
-      setError(err.message || 'Failed to delete event');
+      setError(err.message || 'Failed to delete item');
       setLoading(false);
     }
   };
@@ -288,7 +354,7 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-lg font-bold text-zinc-800 dark:text-zinc-100 flex items-center gap-2">
             <Calendar className="h-5 w-5 text-indigo-500" />
-            {event ? 'Event Details' : 'New Calendar Event'}
+            {event ? `Edit ${itemType === 'reminder' ? 'Reminder' : 'Event'}` : `New ${itemType === 'reminder' ? 'Reminder' : 'Event'}`}
           </h3>
           <button
             onClick={onClose}
@@ -304,6 +370,34 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
           </div>
         )}
 
+        {/* Item Type Selector Tab */}
+        {!event && (
+          <div className="flex p-0.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/40 mb-4 select-none">
+            <button
+              type="button"
+              onClick={() => setItemType('event')}
+              className={`flex-1 rounded-lg py-1.5 text-xs font-semibold uppercase tracking-wider text-center cursor-pointer transition-all ${
+                itemType === 'event'
+                  ? 'bg-white text-zinc-800 shadow-xs dark:bg-zinc-800 dark:text-zinc-100'
+                  : 'text-zinc-450 hover:text-zinc-600 dark:hover:text-zinc-300'
+              }`}
+            >
+              Event
+            </button>
+            <button
+              type="button"
+              onClick={() => setItemType('reminder')}
+              className={`flex-1 rounded-lg py-1.5 text-xs font-semibold uppercase tracking-wider text-center cursor-pointer transition-all ${
+                itemType === 'reminder'
+                  ? 'bg-white text-zinc-800 shadow-xs dark:bg-zinc-800 dark:text-zinc-100'
+                  : 'text-zinc-450 hover:text-zinc-600 dark:hover:text-zinc-300'
+              }`}
+            >
+              Reminder
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           
           {/* Summary / Title */}
@@ -311,7 +405,7 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
             <input
               type="text"
               required
-              placeholder="Event Title"
+              placeholder={itemType === 'reminder' ? 'Reminder Title' : 'Event Title'}
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               className="w-full text-xl font-bold border-b border-zinc-200 pb-2 bg-transparent text-zinc-800 placeholder-zinc-400 dark:border-zinc-800 dark:text-zinc-100 outline-hidden focus:border-indigo-500 transition-colors"
@@ -343,7 +437,7 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
                 <Clock className="h-4 w-4 text-zinc-400" />
-                <span className="font-medium">Time Settings</span>
+                <span className="font-medium">{itemType === 'reminder' ? 'Schedule Date' : 'Time Settings'}</span>
               </div>
               <label className="flex items-center gap-2 text-xs font-semibold text-zinc-500 cursor-pointer">
                 <input
@@ -357,9 +451,9 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div>
+              <div className={itemType === 'reminder' ? 'col-span-2' : ''}>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Starts
+                  {itemType === 'reminder' ? 'Due Date/Time' : 'Starts'}
                 </label>
                 <DatePicker
                   value={dtStart}
@@ -369,85 +463,140 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
                 />
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Ends
-                </label>
-                <DatePicker
-                  value={dtEnd}
-                  onChange={handleEndChange}
-                  isAllDay={isAllDay}
-                  user={user}
-                  alignRight={true}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Location */}
-          <div className="flex items-start gap-3">
-            <MapPin className="h-5 w-5 text-zinc-400 mt-2.5 shrink-0" />
-            <div className="w-full">
-              <input
-                type="text"
-                placeholder="Add Location"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3.5 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 outline-hidden focus:border-indigo-500"
-              />
-            </div>
-          </div>
-
-          {/* Recurrence Rule */}
-          <div className="flex items-start gap-3">
-            <RefreshCw className="h-5 w-5 text-zinc-400 mt-2.5 shrink-0" />
-            <div className="w-full space-y-2">
-              <select
-                value={rrule}
-                onChange={(e) => setRrule(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3.5 py-2.5 text-sm text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 outline-hidden focus:border-indigo-500"
-              >
-                <option value="">Does Not Repeat</option>
-                <option value="FREQ=DAILY">Every Day</option>
-                <option value="FREQ=WEEKLY">Every Week</option>
-                <option value="FREQ=MONTHLY">Every Month</option>
-                <option value="FREQ=YEARLY">Every Year</option>
-              </select>
-
-              {rrule && (
-                <div className="grid grid-cols-2 gap-3 pl-1 animate-fade-in">
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                      Ends
-                    </label>
-                    <select
-                      value={repeatEndType}
-                      onChange={(e) => setRepeatEndType(e.target.value as 'never' | 'date')}
-                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-1.5 text-xs text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 outline-hidden focus:border-indigo-500"
-                    >
-                      <option value="never">Never</option>
-                      <option value="date">On Date</option>
-                    </select>
-                  </div>
-
-                  {repeatEndType === 'date' && (
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                        End Date
-                      </label>
-                      <DatePicker
-                        value={repeatUntilDate}
-                        onChange={setRepeatUntilDate}
-                        isAllDay={true}
-                        user={user}
-                        alignRight={true}
-                      />
-                    </div>
-                  )}
+              {itemType === 'event' && (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                    Ends
+                  </label>
+                  <DatePicker
+                    value={dtEnd}
+                    onChange={handleEndChange}
+                    isAllDay={isAllDay}
+                    user={user}
+                    alignRight={true}
+                  />
                 </div>
               )}
             </div>
           </div>
+
+          {/* Priority (Reminders Only) */}
+          {itemType === 'reminder' && (
+            <div className="flex items-center gap-4 py-1">
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 w-16">
+                Priority
+              </label>
+              <div className="flex gap-2 flex-1">
+                {([
+                  { value: 0, label: 'None' },
+                  { value: 9, label: 'Low' },
+                  { value: 5, label: 'Medium' },
+                  { value: 1, label: 'High' }
+                ] as const).map(p => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setPriority(p.value)}
+                    style={priority === p.value ? getPrimaryButtonStyle(user?.accentColor) : {}}
+                    className={`flex-1 rounded-xl border text-xs font-bold py-2 transition-all cursor-pointer ${
+                      priority === p.value
+                        ? getPrimaryButtonClass(user?.accentColor)
+                        : 'border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900/60'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Status Toggle checkbox (Reminders Edit Only) */}
+          {itemType === 'reminder' && event && (
+            <div className="flex items-center justify-between p-3 rounded-2xl border border-zinc-150/80 bg-zinc-50/10 dark:border-zinc-800/40 dark:bg-zinc-900/10">
+              <div className="flex items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  id="reminder-status-chk"
+                  checked={status === 'COMPLETED'}
+                  onChange={(e) => setStatus(e.target.checked ? 'COMPLETED' : 'NEEDS-ACTION')}
+                  className="rounded-sm border-zinc-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                />
+                <label htmlFor="reminder-status-chk" className="text-sm font-semibold text-zinc-700 dark:text-zinc-350 cursor-pointer">
+                  Mark as Completed
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Location (Events Only) */}
+          {itemType === 'event' && (
+            <div className="flex items-start gap-3">
+              <MapPin className="h-5 w-5 text-zinc-400 mt-2.5 shrink-0" />
+              <div className="w-full">
+                <input
+                  type="text"
+                  placeholder="Add Location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3.5 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 outline-hidden focus:border-indigo-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Recurrence Rule (Events Only) */}
+          {itemType === 'event' && (
+            <div className="flex items-start gap-3">
+              <RefreshCw className="h-5 w-5 text-zinc-400 mt-2.5 shrink-0" />
+              <div className="w-full space-y-2">
+                <select
+                  value={rrule}
+                  onChange={(e) => setRrule(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3.5 py-2.5 text-sm text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 outline-hidden focus:border-indigo-500"
+                >
+                  <option value="">Does Not Repeat</option>
+                  <option value="FREQ=DAILY">Every Day</option>
+                  <option value="FREQ=WEEKLY">Every Week</option>
+                  <option value="FREQ=MONTHLY">Every Month</option>
+                  <option value="FREQ=YEARLY">Every Year</option>
+                </select>
+
+                {rrule && (
+                  <div className="grid grid-cols-2 gap-3 pl-1 animate-fade-in">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                        Ends
+                      </label>
+                      <select
+                        value={repeatEndType}
+                        onChange={(e) => setRepeatEndType(e.target.value as 'never' | 'date')}
+                        className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-1.5 text-xs text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 outline-hidden focus:border-indigo-500"
+                      >
+                        <option value="never">Never</option>
+                        <option value="date">On Date</option>
+                      </select>
+                    </div>
+
+                    {repeatEndType === 'date' && (
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                          End Date
+                        </label>
+                        <DatePicker
+                          value={repeatUntilDate}
+                          onChange={setRepeatUntilDate}
+                          isAllDay={true}
+                          user={user}
+                          alignRight={true}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Description / Notes */}
           <div className="flex items-start gap-3">

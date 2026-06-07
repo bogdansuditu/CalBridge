@@ -30,6 +30,7 @@ model Calendar {
   userId       String
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   events       Event[]
+  todos        Todo[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -50,6 +51,26 @@ model Event {
   calendar    Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@unique([calendarId, uid])
+}
+
+model Todo {
+  id          String    @id @default(uuid())
+  uid         String    // CalDAV todo UID
+  summary     String
+  description String?
+  status      String    @default("NEEDS-ACTION") // "NEEDS-ACTION" | "COMPLETED" | "CANCELLED"
+  completedAt DateTime?
+  due         DateTime?
+  dtStart     DateTime? // Optional start/scheduled date
+  priority    Int       @default(0)              // 1=High, 5=Medium, 9=Low, 0=None
+  sequence    Int       @default(0)
+  etag        String
+  calendarId  String
+  calendar    Calendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([calendarId, uid])
 }

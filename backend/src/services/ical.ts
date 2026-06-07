@@ -296,3 +296,186 @@ export function parseCalendarIcs(icsText: string): IcalParsedEvent[] {
   
   return events;
 }
+
+export interface IcalParsedTodo {
+  uid: string;
+  summary: string;
+  description: string | null;
+  status: string; // "NEEDS-ACTION" | "COMPLETED" | "CANCELLED"
+  completedAt: Date | null;
+  due: Date | null;
+  dtStart: Date | null;
+  priority: number; // 0-9
+  sequence: number;
+}
+
+// Convert a Todo DB model to a standard VTODO .ics file representation
+export function generateTodoIcs(todo: {
+  uid: string;
+  summary: string;
+  description: string | null;
+  status: string;
+  completedAt: Date | null;
+  due: Date | null;
+  dtStart: Date | null;
+  priority: number;
+  sequence: number;
+}): string {
+  const formatIcalDate = (date: Date) => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const y = date.getUTCFullYear();
+    const m = pad(date.getUTCMonth() + 1);
+    const d = pad(date.getUTCDate());
+    const hh = pad(date.getUTCHours());
+    const mm = pad(date.getUTCMinutes());
+    const ss = pad(date.getUTCSeconds());
+    return `${y}${m}${d}T${hh}${mm}${ss}Z`;
+  };
+
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//CalBridge//NONSGML v1.0//EN',
+    'BEGIN:VTODO',
+    `UID:${todo.uid}`,
+    `SEQUENCE:${todo.sequence || 0}`,
+    `DTSTAMP:${formatIcalDate(new Date())}`,
+  ];
+
+  lines.push(`SUMMARY:${todo.summary || 'Untitled Reminder'}`);
+
+  if (todo.description) {
+    const escapedDesc = todo.description
+      .replace(/\\/g, '\\\\')
+      .replace(/,/g, '\\,')
+      .replace(/;/g, '\\;')
+      .replace(/\n/g, '\\n');
+    lines.push(`DESCRIPTION:${escapedDesc}`);
+  }
+
+  if (todo.status) {
+    lines.push(`STATUS:${todo.status}`);
+  }
+
+  if (todo.completedAt) {
+    lines.push(`COMPLETED:${formatIcalDate(new Date(todo.completedAt))}`);
+  }
+
+  if (todo.due) {
+    lines.push(`DUE:${formatIcalDate(new Date(todo.due))}`);
+  }
+
+  if (todo.dtStart) {
+    lines.push(`DTSTART:${formatIcalDate(new Date(todo.dtStart))}`);
+  }
+
+  if (todo.priority !== undefined) {
+    lines.push(`PRIORITY:${todo.priority}`);
+  }
+
+  lines.push('END:VTODO');
+  lines.push('END:VCALENDAR');
+
+  return lines.join('\r\n');
+}
+
+// Parse an incoming VTODO .ics file content
+export function parseTodoIcs(icsText: string): IcalParsedTodo {
+  const unfolded = icsText.replace(/\r?\n[ \t]/g, '');
+  const lines = unfolded.split(/\r?\n/);
+
+  let uid = '';
+  let summary = '';
+  let description = '';
+  let status = 'NEEDS-ACTION';
+  let completedAt: Date | null = null;
+  let due: Date | null = null;
+  let dtStart: Date | null = null;
+  let priority = 0;
+  let sequence = 0;
+
+  const parseIcalDate = (val: string): Date => {
+    const cleanVal = val.trim();
+    if (!cleanVal.includes('T')) {
+      const y = parseInt(cleanVal.substring(0, 4), 10);
+      const m = parseInt(cleanVal.substring(4, 6), 10) - 1;
+      const d = parseInt(cleanVal.substring(6, 8), 10);
+      return new Date(Date.UTC(y, m, d, 0, 0, 0));
+    }
+    const parts = cleanVal.split('T');
+    const datePart = parts[0];
+    const timePart = parts[1].replace('Z', '');
+
+    const y = parseInt(datePart.substring(0, 4), 10);
+    const m = parseInt(datePart.substring(4, 6), 10) - 1;
+    const d = parseInt(datePart.substring(6, 8), 10);
+
+    const hh = parseInt(timePart.substring(0, 2), 10);
+    const mm = parseInt(timePart.substring(2, 4), 10);
+    const ss = parseInt(timePart.substring(4, 6), 10);
+
+    return new Date(Date.UTC(y, m, d, hh, mm, ss));
+  };
+
+  const unescapeText = (text: string): string => {
+    return text
+      .replace(/\\n/gi, '\n')
+      .replace(/\\,/g, ',')
+      .replace(/\\;/g, ';')
+      .replace(/\\\\/g, '\\');
+  };
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) continue;
+
+    const keyWithParams = line.substring(0, colonIdx);
+    const value = line.substring(colonIdx + 1);
+    const key = keyWithParams.split(';')[0].trim().toUpperCase();
+
+    switch (key) {
+      case 'UID':
+        uid = value.trim();
+        break;
+      case 'SUMMARY':
+        summary = unescapeText(value);
+        break;
+      case 'DESCRIPTION':
+        description = unescapeText(value);
+        break;
+      case 'STATUS':
+        status = value.trim().toUpperCase();
+        break;
+      case 'COMPLETED':
+        completedAt = parseIcalDate(value);
+        break;
+      case 'DUE':
+        due = parseIcalDate(value);
+        break;
+      case 'DTSTART':
+        dtStart = parseIcalDate(value);
+        break;
+      case 'PRIORITY':
+        priority = parseInt(value, 10) || 0;
+        break;
+      case 'SEQUENCE':
+        sequence = parseInt(value, 10) || 0;
+        break;
+    }
+  }
+
+  return {
+    uid: uid || `cb-todo-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    summary: summary || 'Untitled Reminder',
+    description: description || null,
+    status,
+    completedAt,
+    due,
+    dtStart,
+    priority,
+    sequence
+  };
+}
+
