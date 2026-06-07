@@ -680,7 +680,10 @@ export default function CalendarGrid({
         style={{ height: 'calc(100% - 40px)' }}
       >
         {/* Time column labels */}
-        <div className="w-14 shrink-0 border-r border-zinc-200/50 dark:border-zinc-800/20 bg-zinc-50/20 dark:bg-zinc-900/10 select-none flex flex-col justify-between">
+        <div 
+          className="w-14 shrink-0 border-r border-zinc-200/50 dark:border-zinc-800/20 bg-zinc-50/20 dark:bg-zinc-900/10 select-none flex flex-col justify-between"
+          style={isMobile ? { height: `${24 * hourHeight}px` } : {}}
+        >
           {hourRows.map(hour => (
             <div 
               key={hour} 
@@ -696,7 +699,10 @@ export default function CalendarGrid({
         </div>
 
         {/* Columns for days */}
-        <div className={`flex flex-1 relative divide-x divide-zinc-200/50 dark:divide-zinc-800/30 ${isMobile ? '' : 'h-full'}`}>
+        <div 
+          className={`flex flex-1 relative divide-x divide-zinc-200/50 dark:divide-zinc-800/30 ${isMobile ? '' : 'h-full'}`}
+          style={isMobile ? { height: `${24 * hourHeight}px` } : {}}
+        >
           {/* Horizontal Grid lines */}
           <div className="absolute inset-0 pointer-events-none flex flex-col justify-between h-full">
             {hourRows.map(hour => (

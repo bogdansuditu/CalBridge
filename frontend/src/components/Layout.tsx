@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiCall, removeToken, setCurrentUser } from '../api';
 import { 
   Calendar, 
@@ -70,6 +70,17 @@ export default function Layout({
   // Sidebar state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const showCollapsed = isSidebarCollapsed && !isMobile;
 
   // Calendar creation/edit states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -250,17 +261,17 @@ export default function Layout({
       <aside className={`
         fixed inset-y-0 left-0 z-50 flex flex-col h-full select-none bg-white/95 dark:bg-zinc-950/95 backdrop-blur-xl border-r border-zinc-200/80 dark:border-zinc-800/50 transition-all duration-300
         md:relative md:inset-auto md:z-auto md:bg-white/40 md:dark:bg-zinc-950/20 shrink-0
-        ${isSidebarCollapsed ? 'md:w-16' : 'md:w-72'}
+        ${showCollapsed ? 'md:w-16' : 'md:w-72'}
         ${isMobileMenuOpen ? 'w-72 translate-x-0' : 'w-72 -translate-x-full md:translate-x-0'}
       `}>
         
         {/* Logo Profile Header */}
-        <div className={`p-4 border-b border-zinc-200/50 dark:border-zinc-800/40 flex ${isSidebarCollapsed ? 'flex-col gap-4 items-center' : 'items-center justify-between'}`}>
+        <div className={`p-4 border-b border-zinc-200/50 dark:border-zinc-800/40 flex ${showCollapsed ? 'flex-col gap-4 items-center' : 'items-center justify-between'}`}>
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-tr from-indigo-500 to-pink-500 text-white">
               <Calendar className="h-4.5 w-4.5" />
             </div>
-            {!isSidebarCollapsed && (
+            {!showCollapsed && (
               <span className="font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50">CalBridge</span>
             )}
           </div>
@@ -269,7 +280,7 @@ export default function Layout({
             <button 
               onClick={handleLogout}
               title="Log Out"
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-500 hover:bg-rose-500/5 dark:hover:bg-rose-950/20 cursor-pointer transition-colors"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-500 hover:bg-rose-50/5 dark:hover:bg-rose-950/20 cursor-pointer transition-colors"
             >
               <LogOut className="h-4.5 w-4.5" />
             </button>
@@ -284,12 +295,12 @@ export default function Layout({
         </div>
 
         {/* User Badge Info */}
-        <div className={`px-4 py-3 border-b border-zinc-200/50 dark:border-zinc-800/40 bg-zinc-50/20 dark:bg-zinc-900/10 flex ${isSidebarCollapsed ? 'justify-center' : 'items-center'}`}>
+        <div className={`px-4 py-3 border-b border-zinc-200/50 dark:border-zinc-800/40 bg-zinc-50/20 dark:bg-zinc-900/10 flex ${showCollapsed ? 'justify-center' : 'items-center'}`}>
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500/15 text-indigo-500 text-xs font-bold uppercase" title={`${user.username} (${user.role})`}>
               {user.username.substring(0, 2)}
             </div>
-            {!isSidebarCollapsed && (
+            {!showCollapsed && (
               <div className="truncate flex-1">
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-sm block leading-none">{user.username}</span>
                 <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mt-0.5">{user.role}</span>
@@ -305,7 +316,7 @@ export default function Layout({
             style={activeTab === 'calendar' ? getPrimaryButtonStyle(user.accentColor) : {}}
             title="Calendar Client"
             className={`flex items-center justify-center rounded-xl text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
-              isSidebarCollapsed 
+              showCollapsed 
                 ? 'h-10 w-10 p-0' 
                 : 'w-full gap-2.5 px-3 py-2'
             } ${
@@ -315,7 +326,7 @@ export default function Layout({
             }`}
           >
             <Calendar className="h-4.5 w-4.5 shrink-0" />
-            {!isSidebarCollapsed && <span>Calendar Client</span>}
+            {!showCollapsed && <span>Calendar Client</span>}
           </button>
 
           {user.role === 'ADMIN' && (
@@ -324,7 +335,7 @@ export default function Layout({
               style={activeTab === 'admin' ? getPrimaryButtonStyle(user.accentColor) : {}}
               title="Users Dashboard"
               className={`flex items-center justify-center rounded-xl text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
-                isSidebarCollapsed 
+                showCollapsed 
                   ? 'h-10 w-10 p-0' 
                   : 'w-full gap-2.5 px-3 py-2'
               } ${
@@ -334,13 +345,13 @@ export default function Layout({
               }`}
             >
               <Users className="h-4.5 w-4.5 shrink-0" />
-              {!isSidebarCollapsed && <span>Users Dashboard</span>}
+              {!showCollapsed && <span>Users Dashboard</span>}
             </button>
           )}
         </nav>
 
         {/* Calendar Lists (Only active in Calendar View) */}
-        {!isSidebarCollapsed && (
+        {!showCollapsed && (
           activeTab === 'calendar' ? (
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-6">
               
@@ -447,11 +458,11 @@ export default function Layout({
         )}
 
         {/* Sidebar Footer Buttons */}
-        <div className={`p-3 border-t border-zinc-200/50 dark:border-zinc-800/40 bg-zinc-50/10 dark:bg-zinc-900/10 flex ${isSidebarCollapsed ? 'flex-col items-center gap-3' : 'items-center justify-between gap-2'}`}>
+        <div className={`p-3 border-t border-zinc-200/50 dark:border-zinc-800/40 bg-zinc-50/10 dark:bg-zinc-900/10 flex ${showCollapsed ? 'flex-col items-center gap-3' : 'items-center justify-between gap-2'}`}>
           <button
             onClick={onOpenSettings}
             title="Account Settings"
-            className={`${isSidebarCollapsed ? 'w-10 h-10' : 'flex-1'} flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer`}
+            className={`${showCollapsed ? 'w-10 h-10' : 'flex-1'} flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer`}
           >
             <Settings className="h-5 w-5" />
           </button>
@@ -459,7 +470,7 @@ export default function Layout({
           <button
             onClick={onToggleTheme}
             title={`Theme: ${themeMode}`}
-            className={`${isSidebarCollapsed ? 'w-10 h-10' : 'flex-1'} flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer`}
+            className={`${showCollapsed ? 'w-10 h-10' : 'flex-1'} flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer`}
           >
             {themeMode === 'light' ? (
               <Sun className="h-5 w-5 text-amber-500" />
@@ -472,10 +483,10 @@ export default function Layout({
 
           <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-            className={`${isSidebarCollapsed ? 'w-10 h-10' : 'flex-1'} flex items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer`}
+            title={showCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            className={`hidden md:flex ${showCollapsed ? 'w-10 h-10' : 'flex-1'} items-center justify-center p-2 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40 transition-all cursor-pointer`}
           >
-            {isSidebarCollapsed ? (
+            {showCollapsed ? (
               <ChevronRight className="h-5 w-5" />
             ) : (
               <ChevronLeft className="h-5 w-5" />

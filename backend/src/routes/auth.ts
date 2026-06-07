@@ -2,6 +2,21 @@ import { Router, Response } from 'express';
 import { prisma } from '../db';
 import { hashPassword, verifyPassword, signToken } from '../utils/auth';
 import { requireWebAuth, WebRequest } from '../middlewares/auth';
+import rateLimit from 'express-rate-limit';
+
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10);
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '10', 10);
+
+const loginLimiter = rateLimit({
+  windowMs: RATE_LIMIT_WINDOW_MS,
+  max: RATE_LIMIT_MAX,
+  message: {
+    error: 'Too Many Requests',
+    message: `Too many login attempts, please try again after ${Math.ceil(RATE_LIMIT_WINDOW_MS / 60000)} minutes`
+  },
+  standardHeaders: true, // Return rate limit info in standard headers
+  legacyHeaders: false, // Disable X-RateLimit-* headers
+});
 
 const router = Router();
 
@@ -17,7 +32,7 @@ router.get('/setup-status', async (req, res) => {
 });
 
 // POST /api/auth/setup - First-run admin setup
-router.post('/setup', async (req, res) => {
+router.post('/setup', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
@@ -72,7 +87,7 @@ router.post('/setup', async (req, res) => {
 });
 
 // POST /api/auth/login - User login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {

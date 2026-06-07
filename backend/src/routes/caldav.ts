@@ -3,6 +3,7 @@ import { prisma } from '../db';
 import { requireCalDavAuth, CalDavRequest } from '../middlewares/auth';
 import { generateIcs, parseIcs } from '../services/ical';
 import { create } from 'xmlbuilder2';
+import xml2js from 'xml2js';
 
 const router = Router();
 
@@ -24,6 +25,26 @@ router.use((req, res, next) => {
 function formatCalDavDate(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`;
+}
+
+// Helper to recursively find the first time-range node in a parsed XML structure
+function findTimeRange(obj: any): { start?: string; end?: string } | null {
+  if (!obj || typeof obj !== 'object') return null;
+  
+  if (obj['time-range']) {
+    const attrs = obj['time-range']?.['$'] || {};
+    return {
+      start: attrs.start,
+      end: attrs.end
+    };
+  }
+  
+  for (const key of Object.keys(obj)) {
+    const res = findTimeRange(obj[key]);
+    if (res) return res;
+  }
+  
+  return null;
 }
 
 // 1. OPTIONS endpoints - Return DAV headers representing server features
@@ -450,74 +471,82 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
   // --- REPORT ---
   if (req.method === 'REPORT') {
     const bodyText = req.body || '';
-
-    // 1. Parse requested items: either calendar-query (range) or calendar-multiget (specific urls)
     let matchedEvents = [];
 
-    if (bodyText.includes('calendar-multiget')) {
-      // Extract specific URLs from XML body
-      const hrefRegex = /<[a-zA-Z0-9:]*href[^>]*>([^<]+)<\/[a-zA-Z0-9:]*href>/gi;
-      const hrefs: string[] = [];
-      let m;
-      while ((m = hrefRegex.exec(bodyText)) !== null) {
-        hrefs.push(m[1]);
-      }
-
-      // Hrefs look like: /caldav/users/admin/calendars/cal-id/event-uid.ics
-      const uids = hrefs.map(h => {
-        const parts = h.split('/');
-        const file = parts[parts.length - 1];
-        return file.replace('.ics', '');
-      }).filter(Boolean);
-
-      matchedEvents = await prisma.event.findMany({
-        where: {
-          calendarId: calendar.id,
-          OR: [
-            { id: { in: uids } },
-            { uid: { in: uids } }
-          ]
-        }
+    try {
+      // Parse the XML body safely using xml2js
+      const parsed = await new Promise<any>((resolve, reject) => {
+        xml2js.parseString(bodyText, {
+          explicitArray: false,
+          tagNameProcessors: [xml2js.processors.stripPrefix]
+        }, (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
+        });
       });
-    } else if (bodyText.includes('calendar-query')) {
-      // Query events inside a date range
-      // e.g. <C:time-range start="20260601T000000Z" end="20260701T000000Z"/>
-      const startRegex = /start="([^"]+)"/i;
-      const endRegex = /end="([^"]+)"/i;
-      
-      const startMatch = startRegex.exec(bodyText);
-      const endMatch = endRegex.exec(bodyText);
 
-      const parseXmlDate = (dStr: string): Date => {
-        const y = parseInt(dStr.substring(0, 4), 10);
-        const m = parseInt(dStr.substring(4, 6), 10) - 1;
-        const d = parseInt(dStr.substring(6, 8), 10);
-        const hh = dStr.includes('T') ? parseInt(dStr.substring(9, 11), 10) : 0;
-        const mm = dStr.includes('T') ? parseInt(dStr.substring(11, 13), 10) : 0;
-        const ss = dStr.includes('T') ? parseInt(dStr.substring(13, 15), 10) : 0;
-        return new Date(Date.UTC(y, m, d, hh, mm, ss));
-      };
+      if (parsed && parsed['calendar-multiget']) {
+        const hrefsRaw = parsed['calendar-multiget']['href'];
+        const hrefs = Array.isArray(hrefsRaw)
+          ? hrefsRaw
+          : (typeof hrefsRaw === 'string' ? [hrefsRaw] : []);
 
-      const whereClause: any = { calendarId: calendar.id };
+        // Hrefs look like: /caldav/users/admin/calendars/cal-id/event-uid.ics
+        const uids = hrefs.map(h => {
+          const parts = h.split('/');
+          const file = parts[parts.length - 1];
+          return file.replace('.ics', '');
+        }).filter(Boolean);
 
-      if (startMatch || endMatch) {
-        whereClause.OR = [
-          {
-            rrule: null,
-            dtEnd: startMatch ? { gte: parseXmlDate(startMatch[1]) } : undefined,
-            dtStart: endMatch ? { lte: parseXmlDate(endMatch[1]) } : undefined
-          },
-          {
-            rrule: { not: null }
+        matchedEvents = await prisma.event.findMany({
+          where: {
+            calendarId: calendar.id,
+            OR: [
+              { id: { in: uids } },
+              { uid: { in: uids } }
+            ]
           }
-        ];
-      }
+        });
+      } else if (parsed && parsed['calendar-query']) {
+        const timeRange = findTimeRange(parsed['calendar-query']);
+        
+        const parseXmlDate = (dStr: string): Date => {
+          const y = parseInt(dStr.substring(0, 4), 10);
+          const m = parseInt(dStr.substring(4, 6), 10) - 1;
+          const d = parseInt(dStr.substring(6, 8), 10);
+          const hh = dStr.includes('T') ? parseInt(dStr.substring(9, 11), 10) : 0;
+          const mm = dStr.includes('T') ? parseInt(dStr.substring(11, 13), 10) : 0;
+          const ss = dStr.includes('T') ? parseInt(dStr.substring(13, 15), 10) : 0;
+          return new Date(Date.UTC(y, m, d, hh, mm, ss));
+        };
 
-      matchedEvents = await prisma.event.findMany({
-        where: whereClause
-      });
-    } else {
-      // Default: return all events
+        const whereClause: any = { calendarId: calendar.id };
+
+        if (timeRange && (timeRange.start || timeRange.end)) {
+          whereClause.OR = [
+            {
+              rrule: null,
+              dtEnd: timeRange.start ? { gte: parseXmlDate(timeRange.start) } : undefined,
+              dtStart: timeRange.end ? { lte: parseXmlDate(timeRange.end) } : undefined
+            },
+            {
+              rrule: { not: null }
+            }
+          ];
+        }
+
+        matchedEvents = await prisma.event.findMany({
+          where: whereClause
+        });
+      } else {
+        // Fallback: return all events
+        matchedEvents = await prisma.event.findMany({
+          where: { calendarId: calendar.id }
+        });
+      }
+    } catch (err) {
+      console.error('[CalDAV REPORT XML Parse Error]', err);
+      // Fallback if XML is empty or malformed
       matchedEvents = await prisma.event.findMany({
         where: { calendarId: calendar.id }
       });

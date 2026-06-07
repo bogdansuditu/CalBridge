@@ -125,7 +125,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   };
 
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar p-6 space-y-6">
+    <div className="h-full overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-6">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -159,88 +159,171 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
       )}
 
       {/* User Table Card */}
-      <div className="rounded-2xl border border-zinc-200/80 bg-white shadow-xs dark:border-zinc-800/50 dark:bg-zinc-900/50 overflow-hidden">
+      <div className="md:rounded-2xl md:border md:border-zinc-200/80 md:bg-white md:shadow-xs md:dark:border-zinc-800/50 md:dark:bg-zinc-900/50 overflow-hidden">
         {loading ? (
           <div className="py-20 text-center text-zinc-500">Loading users...</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/80">
-                  <th className="p-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">User</th>
-                  <th className="p-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Role</th>
-                  <th className="p-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Calendars</th>
-                  <th className="p-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Storage Limit</th>
-                  <th className="p-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Joined</th>
-                  <th className="p-4 text-right text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/40">
-                {users.map((user) => (
-                  <tr key={user.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-900/20 transition-colors">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-tr from-indigo-500/10 to-pink-500/10 text-indigo-500">
-                          {user.role === 'ADMIN' ? <Shield className="h-4.5 w-4.5" /> : <User className="h-4.5 w-4.5" />}
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/80">
+                    <th className="p-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">User</th>
+                    <th className="p-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Role</th>
+                    <th className="p-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Calendars</th>
+                    <th className="p-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Storage Limit</th>
+                    <th className="p-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Joined</th>
+                    <th className="p-4 text-right text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/40">
+                  {users.map((user) => (
+                    <tr key={user.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-900/20 transition-colors">
+                      <td className="p-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-tr from-indigo-500/10 to-pink-500/10 text-indigo-500">
+                            {user.role === 'ADMIN' ? <Shield className="h-4.5 w-4.5" /> : <User className="h-4.5 w-4.5" />}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-zinc-800 dark:text-zinc-200 block text-sm">{user.username}</span>
+                            <span className="text-zinc-400 dark:text-zinc-500 text-xs truncate max-w-[150px] block">{user.id}</span>
+                          </div>
                         </div>
-                        <div>
-                          <span className="font-semibold text-zinc-800 dark:text-zinc-200 block text-sm">{user.username}</span>
-                          <span className="text-zinc-400 dark:text-zinc-500 text-xs truncate max-w-[150px] block">{user.id}</span>
+                      </td>
+                      <td className="p-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                          user.role === 'ADMIN' 
+                            ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400' 
+                            : 'bg-zinc-50 text-zinc-600 dark:bg-zinc-800/40 dark:text-zinc-400'
+                        }`}>
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="p-4 whitespace-nowrap">
+                        <span className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
+                          {user._count?.calendars || 0}
+                        </span>
+                      </td>
+                      <td className="p-4 text-sm text-zinc-600 dark:text-zinc-300 whitespace-nowrap">
+                        {user.storageLimit === 0 ? (
+                          <span className="text-zinc-400 dark:text-zinc-500 italic">Unlimited</span>
+                        ) : (
+                          <span>{user.storageLimit} calendars</span>
+                        )}
+                      </td>
+                      <td className="p-4 text-sm text-zinc-500 whitespace-nowrap">
+                        {new Date(user.createdAt).toLocaleDateString(undefined, {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </td>
+                      <td className="p-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleOpenEdit(user)}
+                            title="Edit user settings"
+                            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 cursor-pointer"
+                          >
+                            <Settings className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(user.id)}
+                            disabled={user.id === currentUser.id}
+                            title="Delete user account"
+                            className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50/50 dark:hover:bg-rose-950/20 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card Grid View */}
+            <div className="grid grid-cols-1 gap-4 md:hidden">
+              {users.map((user) => (
+                <div 
+                  key={user.id} 
+                  className="rounded-2xl border border-zinc-200/80 dark:border-zinc-800/50 bg-white dark:bg-zinc-900/30 p-4 space-y-3.5 shadow-xs"
+                >
+                  {/* Header: User Avatar + Info + Actions */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-tr from-indigo-500/10 to-pink-500/10 text-indigo-500 shrink-0">
+                        {user.role === 'ADMIN' ? <Shield className="h-4.5 w-4.5" /> : <User className="h-4.5 w-4.5" />}
                       </div>
-                    </td>
-                    <td className="p-4">
-                      <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                      <div className="min-w-0">
+                        <span className="font-bold text-zinc-800 dark:text-zinc-200 block text-sm truncate">{user.username}</span>
+                        <span className="text-zinc-400 dark:text-zinc-500 text-[10px] block truncate">{user.id}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => handleOpenEdit(user)}
+                        title="Edit user settings"
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 cursor-pointer"
+                      >
+                        <Settings className="h-4.5 w-4.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(user.id)}
+                        disabled={user.id === currentUser.id}
+                        title="Delete user account"
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50/50 dark:hover:bg-rose-950/20 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                      >
+                        <Trash2 className="h-4.5 w-4.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Body details grid */}
+                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-zinc-100 dark:border-zinc-800/40 text-xs">
+                    <div>
+                      <span className="text-zinc-400 dark:text-zinc-500 block uppercase tracking-wider text-[9px] font-bold">Role</span>
+                      <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold mt-0.5 mt-1 ${
                         user.role === 'ADMIN' 
                           ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400' 
                           : 'bg-zinc-50 text-zinc-600 dark:bg-zinc-800/40 dark:text-zinc-400'
                       }`}>
                         {user.role}
                       </span>
-                    </td>
-                    <td className="p-4">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">
+                    </div>
+
+                    <div>
+                      <span className="text-zinc-400 dark:text-zinc-500 block uppercase tracking-wider text-[9px] font-bold">Calendars</span>
+                      <span className="font-semibold text-zinc-750 dark:text-zinc-350 block mt-1">
                         {user._count?.calendars || 0}
                       </span>
-                    </td>
-                    <td className="p-4 text-sm text-zinc-600 dark:text-zinc-300">
-                      {user.storageLimit === 0 ? (
-                        <span className="text-zinc-400 dark:text-zinc-500 italic">Unlimited</span>
-                      ) : (
-                        <span>{user.storageLimit} calendars</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-sm text-zinc-500">
-                      {new Date(user.createdAt).toLocaleDateString(undefined, {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleOpenEdit(user)}
-                          title="Edit user settings"
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 cursor-pointer"
-                        >
-                          <Settings className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(user.id)}
-                          disabled={user.id === currentUser.id}
-                          title="Delete user account"
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50/50 dark:hover:bg-rose-950/20 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+
+                    <div>
+                      <span className="text-zinc-400 dark:text-zinc-500 block uppercase tracking-wider text-[9px] font-bold">Storage Limit</span>
+                      <span className="font-semibold text-zinc-750 dark:text-zinc-350 block mt-1">
+                        {user.storageLimit === 0 ? 'Unlimited' : `${user.storageLimit} calendars`}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-zinc-400 dark:text-zinc-500 block uppercase tracking-wider text-[9px] font-bold">Joined</span>
+                      <span className="font-semibold text-zinc-750 dark:text-zinc-350 block mt-1">
+                        {new Date(user.createdAt).toLocaleDateString(undefined, {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

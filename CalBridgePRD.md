@@ -14,6 +14,7 @@ Backend: Go or Node.js/TypeScript (Fastify/Express). Go is highly recommended he
 CalDAV Engine: A built-in, compliant CalDAV server layer handling standard discovery endpoints (/.well-known/caldav).
 Database: SQLite (managed via an ORM like Prisma or Ent for easy schema migrations).
 Deployment: Docker (Multi-arch amd64/arm64) with environment variables tailored for reverse proxies and Cloudflare Tunnels (tunnel-auth headers support).
+Testing: Never run or install anything locally, all the testing will be done inside the docker containers
 ### 3. Functional Requirements
 #### 3.1. User Management & Authentication (Admin Dashboard)
 First-Run Setup: If no database exists, the web interface prompts the user to create a global Admin account.
@@ -38,7 +39,7 @@ Exposed via CalDAV to downstream devices as a read-only calendar collection.
 The Canvas: A sleek, minimal layout heavily inspired by Apple Calendar. Clean typography, spacious grids, and subtle borders.
 Views: Month, Week, Day, and Agenda/List views.
 Sidebar: Toggle visibility of multiple calendars using checkboxes, accompanied by their respective color indicators.
-Responsive Layout: Optimized for desktop and tablet viewports, with a clean collapsible sidebar for mobile browsers.
+Responsive Layout: Optimized for desktop and tablet viewports, with a clean collapsible sidebar and optimization for mobile browsers.
 #### 3.5. CalDAV Server Protocol Support
 Proper handling of PROPFIND, REPORT, PUT, DELETE, and OPTIONS verbs.
 Auto-discovery support via standard paths:
@@ -57,8 +58,8 @@ Backgrounds: Pure whites (#FFFFFF) or ultra-light grays (#FAFAFA) for light mode
 Surfaces: Translucent card borders, highly structured layouts, drop shadows minimalized to give an organic, native-app feel.
 Typography: Clean sans-serif stacks (Inter, SF Pro text tokens).
 ### 6. Technical Milestones & Implementation Order
-- Phase 1 (Backend & DB): Set up the Go/Node project, initialize SQLite schema via ORM, implement User/Auth REST endpoints.
-- Phase 2 (CalDAV Engine): Implement core CalDAV protocol compliance. Test connectivity early using DAVx⁵ or a desktop client against a dummy endpoint.
-- Phase 3 (Frontend Admin & View): Build the React dashboard shell, user administration tables, and integrate the core Month/Week calendar UI using mock data.
-- Phase 4 (Integration & Synchronization): Hook the React frontend to the backend REST API. Implement the background worker for remote .ics fetching.
-- Phase 5 (Containerization): Write the multi-stage Dockerfile, optimize image size, and verify setup end-to-end behind a Cloudflare Tunnel proxy.
+[x] Phase 1 (Backend & DB): Set up the Go/Node project, initialize SQLite schema via ORM, implement User/Auth REST endpoints.
+[x] Phase 2 (CalDAV Engine): Implement core CalDAV protocol compliance. Test connectivity early using DAVx⁵ or a desktop client against a dummy endpoint.
+[x] Phase 3 (Frontend Admin & View): Build the React dashboard shell, user administration tables, and integrate the core Month/Week calendar UI using mock data.
+[x] Phase 4 (Integration & Synchronization): Hook the React frontend to the backend REST API. Implement the background worker for remote .ics fetching.
+[x] Phase 5 (Containerization): Write the multi-stage Dockerfile, optimize image size, and verify setup end-to-end behind a Cloudflare Tunnel proxy.
