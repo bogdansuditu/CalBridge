@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiCall } from '../api';
 import { X, Calendar, Clock, MapPin, AlignLeft, RefreshCw, Trash2 } from 'lucide-react';
 import { getPrimaryButtonClass, getPrimaryButtonStyle } from '../utils/theme';
+import DatePicker from './DatePicker';
 
 interface CalendarData {
   id: string;
@@ -45,6 +46,7 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
   const [loading, setLoading] = useState(false);
   const [repeatEndType, setRepeatEndType] = useState<'never' | 'date'>('never');
   const [repeatUntilDate, setRepeatUntilDate] = useState('');
+  const [hasChangedEndDate, setHasChangedEndDate] = useState(false);
 
   // Filter out read-only calendars for selection
   const writableCalendars = calendars.filter(c => !c.isReadOnly);
@@ -89,6 +91,7 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
         
         setDtStart(formatDateForInput(start, event.isAllDay));
         setDtEnd(formatDateForInput(end, event.isAllDay));
+        setHasChangedEndDate(true);
       } else {
         // Create mode
         setSummary('');
@@ -98,6 +101,7 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
         setRrule('');
         setRepeatEndType('never');
         setRepeatUntilDate('');
+        setHasChangedEndDate(false);
         
         // Select first writable calendar by default
         if (writableCalendars.length > 0) {
@@ -134,6 +138,31 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
       const mm = pad(d.getMinutes());
       return `${y}-${m}-${dateStr}T${hh}:${mm}`;
     }
+  };
+
+  const handleStartChange = (newStart: string) => {
+    setDtStart(newStart);
+    if (!hasChangedEndDate) {
+      try {
+        const startD = new Date(newStart);
+        if (!isNaN(startD.getTime())) {
+          const endD = new Date(startD.getTime());
+          if (isAllDay) {
+            endD.setDate(endD.getDate() + 1);
+          } else {
+            endD.setHours(endD.getHours() + 1);
+          }
+          setDtEnd(formatDateForInput(endD, isAllDay));
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  };
+
+  const handleEndChange = (newEnd: string) => {
+    setDtEnd(newEnd);
+    setHasChangedEndDate(true);
   };
 
   const handleAllDayToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -332,11 +361,11 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                   Starts
                 </label>
-                <input
-                  type={isAllDay ? 'date' : 'datetime-local'}
+                <DatePicker
                   value={dtStart}
-                  onChange={(e) => setDtStart(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 outline-hidden"
+                  onChange={handleStartChange}
+                  isAllDay={isAllDay}
+                  user={user}
                 />
               </div>
 
@@ -344,11 +373,12 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                   Ends
                 </label>
-                <input
-                  type={isAllDay ? 'date' : 'datetime-local'}
+                <DatePicker
                   value={dtEnd}
-                  onChange={(e) => setDtEnd(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 outline-hidden"
+                  onChange={handleEndChange}
+                  isAllDay={isAllDay}
+                  user={user}
+                  alignRight={true}
                 />
               </div>
             </div>
@@ -405,12 +435,12 @@ export default function EventModal({ isOpen, onClose, onSave, event, calendars, 
                       <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                         End Date
                       </label>
-                      <input
-                        type="date"
-                        required
+                      <DatePicker
                         value={repeatUntilDate}
-                        onChange={(e) => setRepeatUntilDate(e.target.value)}
-                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 outline-hidden"
+                        onChange={setRepeatUntilDate}
+                        isAllDay={true}
+                        user={user}
+                        alignRight={true}
                       />
                     </div>
                   )}

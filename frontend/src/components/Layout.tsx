@@ -666,11 +666,9 @@ export default function Layout({
                 </div>
               )}
 
-              {/* Copyable CalDAV and WebDAV ICS Feed URL Links */}
               {editingCalendar && (() => {
-                const calendarSlug = editingCalendar.name.trim().replace(/[^a-zA-Z0-9]/g, '_').replace(/__+/g, '_');
-                const caldavUrl = `${window.location.origin}/caldav/users/${user.username}/calendars/${calendarSlug}/`;
-                const subscriptionUrl = `${window.location.origin}/api/calendars/feed/${calendarSlug}.ics`;
+                const caldavUrl = `${window.location.origin}/caldav/users/${user.username}/calendars/${editingCalendar.id}/`;
+                const subscriptionUrl = `${window.location.origin}/api/calendars/feed/${editingCalendar.id}.ics`;
 
                 return (
                   <div className="pt-4 border-t border-zinc-150 dark:border-zinc-800/40 space-y-4 text-left">

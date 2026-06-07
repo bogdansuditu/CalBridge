@@ -11,8 +11,8 @@ const router = Router();
 router.get('/feed/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    // 1. Try finding by UUID directly (catch database error if id is not a valid UUID string format)
-    let calendar = await prisma.calendar.findUnique({
+    // Strictly find by UUID directly (catch database error if id is not a valid UUID string format)
+    const calendar = await prisma.calendar.findUnique({
       where: { id },
       include: {
         events: {
@@ -20,25 +20,6 @@ router.get('/feed/:id', async (req, res) => {
         }
       }
     }).catch(() => null);
-
-    // 2. If not found by UUID, try matching by name or slugified name in memory (handles cases like Work.ics or Work_Events.ics)
-    if (!calendar) {
-      const decoded = decodeURIComponent(id).replace(/\.ics$/i, '').toLowerCase();
-      const cleanName = decoded.replace(/[_-]/g, ' ');
-
-      const allCalendars = await prisma.calendar.findMany({
-        include: {
-          events: {
-            orderBy: { dtStart: 'asc' }
-          }
-        }
-      });
-
-      calendar = allCalendars.find(cal => {
-        const calName = cal.name.toLowerCase();
-        return calName === decoded || calName === cleanName;
-      }) || null;
-    }
 
     if (!calendar) {
       return res.status(404).send('Calendar not found');

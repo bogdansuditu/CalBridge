@@ -72,3 +72,39 @@ html.dark {
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
+
+/* Custom date picker styles */
+input[type="date"],
+input[type="datetime-local"] {
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Custom Calendar/Clock Picker Indicator Style */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(0.5);
+  border-radius: 8px;
+  padding: 4px;
+  transition: all 0.2s;
+  background-color: transparent;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  background-color: rgba(99, 102, 241, 0.15); /* light indigo tint */
+  filter: invert(0.3) sepia(1) saturate(5) hue-rotate(200deg); /* colorize indicator to indigo */
+}
+
+/* Dark Mode Indicators */
+html.dark input[type="date"]::-webkit-calendar-picker-indicator,
+html.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+html.dark input[type="date"]::-webkit-calendar-picker-indicator:hover,
+html.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  background-color: rgba(129, 140, 248, 0.25); /* dark indigo tint */
+  filter: invert(0.9) sepia(1) saturate(5) hue-rotate(200deg);
+}

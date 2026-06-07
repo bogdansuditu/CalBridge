@@ -22,30 +22,77 @@ export async function syncCalendar(calendarId: string): Promise<boolean> {
     const icsText = await res.text();
     const parsedEvents = parseCalendarIcs(icsText);
 
-    // Save parsed events inside a transaction: delete old events and insert new ones
+    // Save parsed events inside a transaction: upsert and delete old ones
     await prisma.$transaction(async (tx) => {
-      // Delete existing events
+      const remoteUids = parsedEvents.map(e => e.uid);
+
+      // 1. Delete events that are no longer in the remote feed
       await tx.event.deleteMany({
-        where: { calendarId: calendar.id }
+        where: {
+          calendarId: calendar.id,
+          uid: { notIn: remoteUids }
+        }
       });
 
-      // Insert new events
-      if (parsedEvents.length > 0) {
-        await tx.event.createMany({
-          data: parsedEvents.map(evt => ({
-            uid: evt.uid,
-            summary: evt.summary,
-            description: evt.description,
-            location: evt.location,
-            dtStart: evt.dtStart,
-            dtEnd: evt.dtEnd,
-            isAllDay: evt.isAllDay,
-            rrule: evt.rrule,
-            sequence: evt.sequence,
-            etag: `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`,
-            calendarId: calendar.id
-          }))
-        });
+      // 2. Fetch existing events to determine what changed
+      const existingEvents = await tx.event.findMany({
+        where: {
+          calendarId: calendar.id,
+          uid: { in: remoteUids }
+        }
+      });
+
+      const existingMap = new Map(existingEvents.map(e => [e.uid, e]));
+
+      for (const remoteEvt of parsedEvents) {
+        const existing = existingMap.get(remoteEvt.uid);
+
+        if (existing) {
+          // Check if any fields changed to avoid updating ETag unnecessarily
+          const hasChanged = 
+            existing.summary !== remoteEvt.summary ||
+            existing.description !== remoteEvt.description ||
+            existing.location !== remoteEvt.location ||
+            existing.dtStart.getTime() !== remoteEvt.dtStart.getTime() ||
+            existing.dtEnd.getTime() !== remoteEvt.dtEnd.getTime() ||
+            existing.isAllDay !== remoteEvt.isAllDay ||
+            existing.rrule !== remoteEvt.rrule ||
+            existing.sequence !== remoteEvt.sequence;
+
+          if (hasChanged) {
+            await tx.event.update({
+              where: { id: existing.id },
+              data: {
+                summary: remoteEvt.summary,
+                description: remoteEvt.description,
+                location: remoteEvt.location,
+                dtStart: remoteEvt.dtStart,
+                dtEnd: remoteEvt.dtEnd,
+                isAllDay: remoteEvt.isAllDay,
+                rrule: remoteEvt.rrule,
+                sequence: remoteEvt.sequence,
+                etag: `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`
+              }
+            });
+          }
+        } else {
+          // Insert new event
+          await tx.event.create({
+            data: {
+              uid: remoteEvt.uid,
+              summary: remoteEvt.summary,
+              description: remoteEvt.description,
+              location: remoteEvt.location,
+              dtStart: remoteEvt.dtStart,
+              dtEnd: remoteEvt.dtEnd,
+              isAllDay: remoteEvt.isAllDay,
+              rrule: remoteEvt.rrule,
+              sequence: remoteEvt.sequence,
+              etag: `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`,
+              calendarId: calendar.id
+            }
+          });
+        }
       }
 
       // Update calendar details: CTAG / syncToken

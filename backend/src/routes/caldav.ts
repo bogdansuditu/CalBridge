@@ -206,24 +206,10 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
     return res.status(403).send('Forbidden');
   }
 
-  // Retrieve calendar
-  let calendar = await prisma.calendar.findFirst({
+  // Retrieve calendar (strictly by database UUID)
+  const calendar = await prisma.calendar.findFirst({
     where: { id: calendarId, userId: authUser.id }
   }).catch(() => null);
-
-  if (!calendar) {
-    const decoded = decodeURIComponent(calendarId).replace(/\.ics$/i, '').toLowerCase();
-    const cleanName = decoded.replace(/[_-]/g, ' ');
-
-    const allCalendars = await prisma.calendar.findMany({
-      where: { userId: authUser.id }
-    });
-
-    calendar = allCalendars.find(cal => {
-      const calName = cal.name.toLowerCase();
-      return calName === decoded || calName === cleanName;
-    }) || null;
-  }
 
   if (!calendar) {
     return res.status(404).send('Calendar Not Found');
@@ -485,18 +471,27 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
         });
       });
 
+      const getXmlNodeText = (node: any): string => {
+        if (!node) return '';
+        if (typeof node === 'string') return node;
+        if (typeof node === 'object' && '_' in node) return node._;
+        return '';
+      };
+
       if (parsed && parsed['calendar-multiget']) {
         const hrefsRaw = parsed['calendar-multiget']['href'];
-        const hrefs = Array.isArray(hrefsRaw)
-          ? hrefsRaw
-          : (typeof hrefsRaw === 'string' ? [hrefsRaw] : []);
+        const hrefs = Array.isArray(hrefsRaw) ? hrefsRaw : [hrefsRaw];
 
         // Hrefs look like: /caldav/users/admin/calendars/cal-id/event-uid.ics
-        const uids = hrefs.map(h => {
-          const parts = h.split('/');
-          const file = parts[parts.length - 1];
-          return file.replace('.ics', '');
-        }).filter(Boolean);
+        const uids = hrefs
+          .map(h => getXmlNodeText(h))
+          .filter(Boolean)
+          .map(h => {
+            const parts = h.split('/');
+            const file = parts[parts.length - 1];
+            return file.replace('.ics', '');
+          })
+          .filter(Boolean);
 
         matchedEvents = await prisma.event.findMany({
           where: {
