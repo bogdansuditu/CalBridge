@@ -31,6 +31,7 @@ model Calendar {
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   events       Event[]
   todos        Todo[]
+  deletedResources DeletedResource[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -46,6 +47,7 @@ model Event {
   isAllDay    Boolean  @default(false)
   rrule       String?  // Recurrence rule string (RFC 5545)
   sequence    Int      @default(0)
+  syncToken   Int      @default(1)
   etag        String   // CalDAV caching ETag (usually timestamp or hash)
   calendarId  String
   calendar    Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
@@ -66,6 +68,7 @@ model Todo {
   dtStart     DateTime? // Optional start/scheduled date
   priority    Int       @default(0)              // 1=High, 5=Medium, 9=Low, 0=None
   sequence    Int       @default(0)
+  syncToken   Int       @default(1)
   etag        String
   calendarId  String
   calendar    Calendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
@@ -74,3 +77,16 @@ model Todo {
 
   @@unique([calendarId, uid])
 }
+
+model DeletedResource {
+  id           String   @id @default(uuid())
+  resourceId   String   // The CalDAV event/todo filename ID (usually event.id)
+  resourceType String   // "EVENT" or "TODO"
+  calendarId   String
+  calendar     Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  syncToken    Int      // Calendar syncToken at the time of deletion
+  deletedAt    DateTime @default(now())
+
+  @@index([calendarId, syncToken])
+}
+

@@ -124,6 +124,12 @@ router.post('/', async (req: WebRequest, res: Response) => {
     const eventUid = `cb-${Date.now()}-${Math.random().toString(36).substring(2, 10)}@calbridge`;
     const etag = `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`;
 
+    const updatedCal = await prisma.calendar.update({
+      where: { id: calendarId },
+      data: { syncToken: { increment: 1 } }
+    });
+    const nextToken = updatedCal.syncToken;
+
     const event = await prisma.event.create({
       data: {
         uid: eventUid,
@@ -135,14 +141,9 @@ router.post('/', async (req: WebRequest, res: Response) => {
         isAllDay: !!isAllDay,
         rrule: rrule || null,
         etag,
-        calendarId
+        calendarId,
+        syncToken: nextToken
       }
-    });
-
-    // Increment syncToken
-    await prisma.calendar.update({
-      where: { id: calendarId },
-      data: { syncToken: { increment: 1 } }
     });
 
     res.status(201).json({ event });
@@ -198,27 +199,30 @@ router.put('/:id', async (req: WebRequest, res: Response) => {
     const nextSequence = (event.sequence || 0) + 1;
     const nextEtag = `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`;
 
+    const updatedCal = await prisma.calendar.update({
+      where: { id: event.calendarId },
+      data: { syncToken: { increment: 1 } }
+    });
+    const nextToken = updatedCal.syncToken;
+
+    let targetNextToken = nextToken;
+    if (calendarId && calendarId !== event.calendarId) {
+      const updatedTargetCal = await prisma.calendar.update({
+        where: { id: calendarId },
+        data: { syncToken: { increment: 1 } }
+      });
+      targetNextToken = updatedTargetCal.syncToken;
+    }
+
     const updated = await prisma.event.update({
       where: { id },
       data: {
         ...updateData,
         sequence: nextSequence,
-        etag: nextEtag
+        etag: nextEtag,
+        syncToken: targetNextToken
       }
     });
-
-    // Increment syncToken on original calendar and target calendar if it changed
-    await prisma.calendar.update({
-      where: { id: event.calendarId },
-      data: { syncToken: { increment: 1 } }
-    });
-
-    if (calendarId && calendarId !== event.calendarId) {
-      await prisma.calendar.update({
-        where: { id: calendarId },
-        data: { syncToken: { increment: 1 } }
-      });
-    }
 
     res.json({ event: updated });
   } catch (error) {
@@ -246,14 +250,23 @@ router.delete('/:id', async (req: WebRequest, res: Response) => {
       return res.status(400).json({ error: 'Bad Request', message: 'Cannot delete events from a read-only calendar' });
     }
 
-    await prisma.event.delete({
-      where: { id }
-    });
-
-    // Increment syncToken
-    await prisma.calendar.update({
+    const updatedCal = await prisma.calendar.update({
       where: { id: event.calendarId },
       data: { syncToken: { increment: 1 } }
+    });
+    const nextToken = updatedCal.syncToken;
+
+    await prisma.deletedResource.create({
+      data: {
+        resourceId: event.id,
+        resourceType: 'EVENT',
+        calendarId: event.calendarId,
+        syncToken: nextToken
+      }
+    });
+
+    await prisma.event.delete({
+      where: { id }
     });
 
     res.json({ message: 'Event deleted successfully' });

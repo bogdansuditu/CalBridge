@@ -26,13 +26,33 @@ export async function syncCalendar(calendarId: string): Promise<boolean> {
     await prisma.$transaction(async (tx) => {
       const remoteUids = parsedEvents.map(e => e.uid);
 
-      // 1. Delete events that are no longer in the remote feed
-      await tx.event.deleteMany({
+      // Determine next sync token
+      const currentCal = await tx.calendar.findUnique({
+        where: { id: calendar.id }
+      });
+      const nextToken = (currentCal?.syncToken || 0) + 1;
+
+      // 1. Fetch and delete events that are no longer in the remote feed
+      const eventsToDelete = await tx.event.findMany({
         where: {
           calendarId: calendar.id,
           uid: { notIn: remoteUids }
         }
       });
+
+      for (const evt of eventsToDelete) {
+        await tx.deletedResource.create({
+          data: {
+            resourceId: evt.id,
+            resourceType: 'EVENT',
+            calendarId: calendar.id,
+            syncToken: nextToken
+          }
+        });
+        await tx.event.delete({
+          where: { id: evt.id }
+        });
+      }
 
       // 2. Fetch existing events to determine what changed
       const existingEvents = await tx.event.findMany({
@@ -71,7 +91,8 @@ export async function syncCalendar(calendarId: string): Promise<boolean> {
                 isAllDay: remoteEvt.isAllDay,
                 rrule: remoteEvt.rrule,
                 sequence: remoteEvt.sequence,
-                etag: `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`
+                etag: `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`,
+                syncToken: nextToken
               }
             });
           }
@@ -89,7 +110,8 @@ export async function syncCalendar(calendarId: string): Promise<boolean> {
               rrule: remoteEvt.rrule,
               sequence: remoteEvt.sequence,
               etag: `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`,
-              calendarId: calendar.id
+              calendarId: calendar.id,
+              syncToken: nextToken
             }
           });
         }
@@ -100,7 +122,7 @@ export async function syncCalendar(calendarId: string): Promise<boolean> {
         where: { id: calendar.id },
         data: {
           lastSyncedAt: new Date(),
-          syncToken: { increment: 1 }
+          syncToken: nextToken
         }
       });
     });

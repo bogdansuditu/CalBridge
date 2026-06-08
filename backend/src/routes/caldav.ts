@@ -16,7 +16,7 @@ router.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PROPFIND, REPORT');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Depth, Prefer');
   res.setHeader('Access-Control-Expose-Headers', 'ETag, DAV, WWW-Authenticate');
-  res.setHeader('DAV', '1, 2, access-control, calendar-access, calendar-schedule, calendar-auto-schedule');
+  res.setHeader('DAV', '1, 2, sync-collection, access-control, calendar-access, calendar-schedule, calendar-auto-schedule');
   res.setHeader('Allow', 'GET, POST, PUT, DELETE, OPTIONS, PROPFIND, REPORT');
   next();
 });
@@ -418,6 +418,13 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
       const isTodo = icsContent.includes('BEGIN:VTODO');
       const etag = `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`;
 
+      // Increment syncToken first
+      const updatedCal = await prisma.calendar.update({
+        where: { id: calendar.id },
+        data: { syncToken: { increment: 1 } }
+      });
+      const nextToken = updatedCal.syncToken;
+
       if (isTodo) {
         const parsed = parseTodoIcs(icsContent);
         const existingTodo = await prisma.todo.findFirst({
@@ -443,7 +450,8 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
               dtStart: parsed.dtStart,
               priority: parsed.priority,
               sequence: { increment: 1 },
-              etag
+              etag,
+              syncToken: nextToken
             }
           });
         } else {
@@ -459,15 +467,11 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
               dtStart: parsed.dtStart,
               priority: parsed.priority,
               etag,
-              calendarId: calendar.id
+              calendarId: calendar.id,
+              syncToken: nextToken
             }
           });
         }
-
-        await prisma.calendar.update({
-          where: { id: calendar.id },
-          data: { syncToken: { increment: 1 } }
-        });
 
         res.setHeader('ETag', dbTodo.etag);
         return res.status(201).send();
@@ -496,7 +500,8 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
               isAllDay: parsed.isAllDay,
               rrule: parsed.rrule,
               sequence: { increment: 1 },
-              etag
+              etag,
+              syncToken: nextToken
             }
           });
         } else {
@@ -512,15 +517,11 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
               isAllDay: parsed.isAllDay,
               rrule: parsed.rrule,
               etag,
-              calendarId: calendar.id
+              calendarId: calendar.id,
+              syncToken: nextToken
             }
           });
         }
-
-        await prisma.calendar.update({
-          where: { id: calendar.id },
-          data: { syncToken: { increment: 1 } }
-        });
 
         res.setHeader('ETag', dbEvent.etag);
         return res.status(201).send();
@@ -552,7 +553,23 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
         }
       });
 
+      // Increment syncToken first
+      const updatedCal = await prisma.calendar.update({
+        where: { id: calendar.id },
+        data: { syncToken: { increment: 1 } }
+      });
+      const nextToken = updatedCal.syncToken;
+
       if (event) {
+        await prisma.deletedResource.create({
+          data: {
+            resourceId: event.id,
+            resourceType: 'EVENT',
+            calendarId: calendar.id,
+            syncToken: nextToken
+          }
+        });
+
         await prisma.event.delete({
           where: { id: event.id }
         });
@@ -571,16 +588,19 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
           return res.status(404).send('Resource Not Found');
         }
 
+        await prisma.deletedResource.create({
+          data: {
+            resourceId: todo.id,
+            resourceType: 'TODO',
+            calendarId: calendar.id,
+            syncToken: nextToken
+          }
+        });
+
         await prisma.todo.delete({
           where: { id: todo.id }
         });
       }
-
-      // Increment syncToken
-      await prisma.calendar.update({
-        where: { id: calendar.id },
-        data: { syncToken: { increment: 1 } }
-      });
 
       return res.status(204).send();
     } catch (err) {
@@ -613,6 +633,103 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
         if (typeof node === 'object' && '_' in node) return node._;
         return '';
       };
+
+      if (parsed && parsed['sync-collection']) {
+        // --- WebDAV Sync Collection REPORT (RFC 6578) ---
+        const rawToken = getXmlNodeText(parsed['sync-collection']['sync-token']);
+        // Extract client sync token number
+        const clientSyncToken = parseInt(rawToken.replace('token-', ''), 10) || 0;
+        
+        // Find changes (created/updated events & todos, and deleted resources)
+        const changedEvents = await prisma.event.findMany({
+          where: {
+            calendarId: calendar.id,
+            syncToken: { gt: clientSyncToken }
+          }
+        });
+
+        const changedTodos = await prisma.todo.findMany({
+          where: {
+            calendarId: calendar.id,
+            syncToken: { gt: clientSyncToken }
+          }
+        });
+
+        const deletedResources = await prisma.deletedResource.findMany({
+          where: {
+            calendarId: calendar.id,
+            syncToken: { gt: clientSyncToken }
+          }
+        });
+
+        // Determine if calendar-data is requested
+        let wantsCalendarData = false;
+        const propNode = parsed['sync-collection']['prop'];
+        if (propNode) {
+          const keys = Object.keys(propNode).map(k => k.toLowerCase());
+          wantsCalendarData = keys.includes('calendar-data');
+        }
+
+        // Build the XML response
+        const doc = create({ version: '1.0', encoding: 'UTF-8' })
+          .ele('multistatus', { 
+            'xmlns': 'DAV:', 
+            'xmlns:C': 'urn:ietf:params:xml:ns:caldav'
+          })
+            .ele('sync-token').txt(`token-${calendar.syncToken}`).up();
+
+        // 1. Added/Modified Events
+        for (const event of changedEvents) {
+          const itemUrl = `${calUrl}${event.id}.ics`;
+          const responseNode = doc.ele('response')
+            .ele('href').txt(itemUrl).up()
+            .ele('propstat')
+              .ele('prop')
+                .ele('getetag').txt(event.etag).up()
+                .ele('getcontenttype').txt('text/calendar; charset=utf-8').up();
+          
+          if (wantsCalendarData) {
+            responseNode.ele('C:calendar-data').txt(generateIcs(event)).up();
+          }
+
+          responseNode.up()
+            .ele('status').txt('HTTP/1.1 200 OK').up()
+          .up()
+          .up();
+        }
+
+        // 2. Added/Modified Todos
+        for (const todo of changedTodos) {
+          const itemUrl = `${calUrl}${todo.id}.ics`;
+          const responseNode = doc.ele('response')
+            .ele('href').txt(itemUrl).up()
+            .ele('propstat')
+              .ele('prop')
+                .ele('getetag').txt(todo.etag).up()
+                .ele('getcontenttype').txt('text/calendar; charset=utf-8').up();
+          
+          if (wantsCalendarData) {
+            responseNode.ele('C:calendar-data').txt(generateTodoIcs(todo)).up();
+          }
+
+          responseNode.up()
+            .ele('status').txt('HTTP/1.1 200 OK').up()
+          .up()
+          .up();
+        }
+
+        // 3. Deleted Resources
+        for (const del of deletedResources) {
+          const itemUrl = `${calUrl}${del.resourceId}.ics`;
+          doc.ele('response')
+            .ele('href').txt(itemUrl).up()
+            .ele('status').txt('HTTP/1.1 404 Not Found').up()
+          .up();
+        }
+
+        res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+        return res.status(207).send(doc.end({ prettyPrint: true }));
+      }
 
       if (parsed && parsed['calendar-multiget']) {
         const hrefsRaw = parsed['calendar-multiget']['href'];
@@ -730,59 +847,54 @@ router.all('/users/:username/calendars/:calendarId*', async (req: CalDavRequest,
           where: { calendarId: calendar.id }
         });
       }
+
+      // Build the XML Multistatus Report Response
+      const doc = create({ version: '1.0', encoding: 'UTF-8' })
+        .ele('multistatus', { 
+          'xmlns': 'DAV:', 
+          'xmlns:C': 'urn:ietf:params:xml:ns:caldav'
+        });
+
+      for (const event of matchedEvents) {
+        const itemUrl = `${calUrl}${event.id}.ics`;
+        const ics = generateIcs(event);
+
+        doc.ele('response')
+          .ele('href').txt(itemUrl).up()
+          .ele('propstat')
+            .ele('prop')
+              .ele('getetag').txt(event.etag).up()
+              .ele('getcontenttype').txt('text/calendar; charset=utf-8').up()
+              .ele('C:calendar-data').txt(ics).up()
+            .up()
+            .ele('status').txt('HTTP/1.1 200 OK').up()
+          .up()
+        .up();
+      }
+
+      for (const todo of matchedTodos) {
+        const itemUrl = `${calUrl}${todo.id}.ics`;
+        const ics = generateTodoIcs(todo);
+
+        doc.ele('response')
+          .ele('href').txt(itemUrl).up()
+          .ele('propstat')
+            .ele('prop')
+              .ele('getetag').txt(todo.etag).up()
+              .ele('getcontenttype').txt('text/calendar; charset=utf-8').up()
+              .ele('C:calendar-data').txt(ics).up()
+            .up()
+            .ele('status').txt('HTTP/1.1 200 OK').up()
+          .up()
+        .up();
+      }
+
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      return res.status(207).send(doc.end({ prettyPrint: true }));
     } catch (err) {
       console.error('[CalDAV REPORT XML Parse Error]', err);
-      matchedEvents = await prisma.event.findMany({
-        where: { calendarId: calendar.id }
-      });
-      matchedTodos = await prisma.todo.findMany({
-        where: { calendarId: calendar.id }
-      });
+      return res.status(500).send('REPORT processing error');
     }
-
-    // Build the XML Multistatus Report Response
-    const doc = create({ version: '1.0', encoding: 'UTF-8' })
-      .ele('multistatus', { 
-        'xmlns': 'DAV:', 
-        'xmlns:C': 'urn:ietf:params:xml:ns:caldav'
-      });
-
-    for (const event of matchedEvents) {
-      const itemUrl = `${calUrl}${event.id}.ics`;
-      const ics = generateIcs(event);
-
-      doc.ele('response')
-        .ele('href').txt(itemUrl).up()
-        .ele('propstat')
-          .ele('prop')
-            .ele('getetag').txt(event.etag).up()
-            .ele('getcontenttype').txt('text/calendar; charset=utf-8').up()
-            .ele('C:calendar-data').txt(ics).up()
-          .up()
-          .ele('status').txt('HTTP/1.1 200 OK').up()
-        .up()
-      .up();
-    }
-
-    for (const todo of matchedTodos) {
-      const itemUrl = `${calUrl}${todo.id}.ics`;
-      const ics = generateTodoIcs(todo);
-
-      doc.ele('response')
-        .ele('href').txt(itemUrl).up()
-        .ele('propstat')
-          .ele('prop')
-            .ele('getetag').txt(todo.etag).up()
-            .ele('getcontenttype').txt('text/calendar; charset=utf-8').up()
-            .ele('C:calendar-data').txt(ics).up()
-          .up()
-          .ele('status').txt('HTTP/1.1 200 OK').up()
-        .up()
-      .up();
-    }
-
-    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-    return res.status(207).send(doc.end({ prettyPrint: true }));
   }
 
   return res.status(405).send('Method Not Allowed');

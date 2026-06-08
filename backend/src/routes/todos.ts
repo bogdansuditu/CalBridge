@@ -61,6 +61,12 @@ router.post('/', async (req: WebRequest, res: Response) => {
     const todoUid = `cb-todo-${Date.now()}-${Math.random().toString(36).substring(2, 10)}@calbridge`;
     const etag = `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`;
 
+    const updatedCal = await prisma.calendar.update({
+      where: { id: calendarId },
+      data: { syncToken: { increment: 1 } }
+    });
+    const nextToken = updatedCal.syncToken;
+
     const todo = await prisma.todo.create({
       data: {
         uid: todoUid,
@@ -72,14 +78,9 @@ router.post('/', async (req: WebRequest, res: Response) => {
         dtStart: dtStart ? new Date(dtStart) : null,
         priority: parseInt(priority, 10) || 0,
         etag,
-        calendarId
+        calendarId,
+        syncToken: nextToken
       }
-    });
-
-    // Increment syncToken
-    await prisma.calendar.update({
-      where: { id: calendarId },
-      data: { syncToken: { increment: 1 } }
     });
 
     res.status(201).json({ todo });
@@ -143,27 +144,30 @@ router.put('/:id', async (req: WebRequest, res: Response) => {
     const nextSequence = (todo.sequence || 0) + 1;
     const nextEtag = `"${Date.now()}-${Math.random().toString(36).substring(2, 6)}"`;
 
+    const updatedCal = await prisma.calendar.update({
+      where: { id: todo.calendarId },
+      data: { syncToken: { increment: 1 } }
+    });
+    const nextToken = updatedCal.syncToken;
+
+    let targetNextToken = nextToken;
+    if (calendarId && calendarId !== todo.calendarId) {
+      const updatedTargetCal = await prisma.calendar.update({
+        where: { id: calendarId },
+        data: { syncToken: { increment: 1 } }
+      });
+      targetNextToken = updatedTargetCal.syncToken;
+    }
+
     const updated = await prisma.todo.update({
       where: { id },
       data: {
         ...updateData,
         sequence: nextSequence,
-        etag: nextEtag
+        etag: nextEtag,
+        syncToken: targetNextToken
       }
     });
-
-    // Increment syncToken on original calendar and target calendar if it changed
-    await prisma.calendar.update({
-      where: { id: todo.calendarId },
-      data: { syncToken: { increment: 1 } }
-    });
-
-    if (calendarId && calendarId !== todo.calendarId) {
-      await prisma.calendar.update({
-        where: { id: calendarId },
-        data: { syncToken: { increment: 1 } }
-      });
-    }
 
     res.json({ todo: updated });
   } catch (error) {
@@ -191,14 +195,23 @@ router.delete('/:id', async (req: WebRequest, res: Response) => {
       return res.status(400).json({ error: 'Bad Request', message: 'Cannot delete todos from a read-only calendar' });
     }
 
-    await prisma.todo.delete({
-      where: { id }
-    });
-
-    // Increment syncToken
-    await prisma.calendar.update({
+    const updatedCal = await prisma.calendar.update({
       where: { id: todo.calendarId },
       data: { syncToken: { increment: 1 } }
+    });
+    const nextToken = updatedCal.syncToken;
+
+    await prisma.deletedResource.create({
+      data: {
+        resourceId: todo.id,
+        resourceType: 'TODO',
+        calendarId: todo.calendarId,
+        syncToken: nextToken
+      }
+    });
+
+    await prisma.todo.delete({
+      where: { id }
     });
 
     res.json({ message: 'Todo deleted successfully' });
