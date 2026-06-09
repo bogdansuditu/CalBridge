@@ -18,6 +18,14 @@ app.use('/api', cors({
   exposedHeaders: ['ETag', 'DAV', 'WWW-Authenticate']
 }));
 
+// Disable caching for all REST API endpoints to ensure real-time updates (especially after POST/PUT/DELETE)
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // Express built-in body parsers
 app.use(express.json());
 
