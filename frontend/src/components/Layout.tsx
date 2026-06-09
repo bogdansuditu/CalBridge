@@ -29,6 +29,7 @@ interface CalendarData {
   isReadOnly: boolean;
   feedUrl: string | null;
   lastSyncedAt: string | null;
+  syncToken: number;
 }
 
 interface LayoutProps {

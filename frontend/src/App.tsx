@@ -15,6 +15,7 @@ interface CalendarData {
   isReadOnly: boolean;
   feedUrl: string | null;
   lastSyncedAt: string | null;
+  syncToken: number;
 }
 
 export interface CalendarItemData {
@@ -153,6 +154,44 @@ export default function App() {
       loadData();
     }
   }, [user]);
+
+  // Poll for calendar syncToken changes every 10 seconds to auto-refresh the UI
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const calRes = await apiCall('/api/calendars');
+        
+        // Check if any calendar's syncToken has changed
+        let hasChanges = false;
+        const currentCalMap = new Map(calendars.map(c => [c.id, c]));
+
+        for (const newCal of calRes.calendars) {
+          const currentCal = currentCalMap.get(newCal.id);
+          if (!currentCal || currentCal.syncToken !== newCal.syncToken) {
+            hasChanges = true;
+            break;
+          }
+        }
+
+        if (hasChanges) {
+          console.log('[Sync] Database update detected, auto-refreshing UI...');
+          setCalendars(calRes.calendars);
+          
+          const evtRes = await apiCall('/api/events');
+          setEvents(evtRes.events);
+
+          const todoRes = await apiCall('/api/todos');
+          setTodos(todoRes.todos.map((t: any) => ({ ...t, isTodo: true })));
+        }
+      } catch (err) {
+        console.error('[Sync] Error checking for calendar updates:', err);
+      }
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [user, calendars]);
 
   const handleLoginSuccess = (authenticatedUser: { id: string; username: string; role: string; accentColor?: string | null }) => {
     setUser(authenticatedUser);

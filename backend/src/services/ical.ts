@@ -455,8 +455,21 @@ export function parseIcs(icsText: string): IcalParsedEvent {
       .replace(/\\\\/g, '\\');
   };
 
+  let inVevent = false;
   for (const line of lines) {
-    if (!line.trim()) continue;
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.toUpperCase() === 'BEGIN:VEVENT') {
+      inVevent = true;
+      continue;
+    }
+    if (trimmed.toUpperCase() === 'END:VEVENT') {
+      inVevent = false;
+      continue;
+    }
+
+    if (!inVevent) continue;
 
     const colonIdx = line.indexOf(':');
     if (colonIdx === -1) continue;
@@ -671,8 +684,21 @@ export function parseTodoIcs(icsText: string): IcalParsedTodo {
       .replace(/\\\\/g, '\\');
   };
 
+  let inVtodo = false;
   for (const line of lines) {
-    if (!line.trim()) continue;
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.toUpperCase() === 'BEGIN:VTODO') {
+      inVtodo = true;
+      continue;
+    }
+    if (trimmed.toUpperCase() === 'END:VTODO') {
+      inVtodo = false;
+      continue;
+    }
+
+    if (!inVtodo) continue;
 
     const colonIdx = line.indexOf(':');
     if (colonIdx === -1) continue;
